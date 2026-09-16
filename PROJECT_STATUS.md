@@ -8,7 +8,7 @@
 
 Целевая схема:
 
-`GitHub Pages (клиент) → Cloudflare Worker (ИИ-шлюз) → OpenAI/другой провайдер`
+`Cloudflare Pages (клиент) → Cloudflare Worker (ИИ-шлюз) → ИИ-провайдер`
 
 Пользовательские данные синхронизируются через Firebase клиентом, а не Worker.
 
@@ -27,7 +27,7 @@
 - `AI_ENDPOINT` настроен на опубликованный Cloudflare Worker `my-nutritionist-advice`.
 - CORS Worker разрешает только origin Cloudflare Pages `https://nutriciolog.pages.dev`.
 - Firebase Web config в `firebase-client.js` заполнен для проекта `my-nutritionist-67ce8`.
-- Google Authentication включён в Firebase и активирован в клиенте; `nutriciolog.pages.dev` ещё нужно добавить в Firebase Authorized domains.
+- Google Authentication включён в Firebase, активирован в клиенте, а `nutriciolog.pages.dev` добавлен в Firebase Authorized domains.
 - `OPENAI_API_KEY` должен существовать только как Cloudflare Worker secret; в репозитории его быть не должно.
 
 ## Проверенная конфигурация Worker
@@ -37,10 +37,12 @@
 - `OPENAI_API_KEY` добавлен пользователем в Cloudflare как секрет и не находится в репозитории.
 - Домен `workers.dev` включён; URL Worker настроен в клиенте.
 - Worker проверяет Firebase ID token и разрешает ИИ только адресам из секрета Cloudflare `AI_ALLOWED_EMAILS`; без списка доступ запрещён всем.
+- Сайт опубликован на Cloudflare Pages: `https://nutriciolog.pages.dev/`.
+- Пользователь подтвердил работу сайта, Google-входа и ограниченного доступа к ИИ после внешней настройки.
 
 ## Ключевые архитектурные решения
 
-- GitHub Pages содержит только публичный клиентский код.
+- Cloudflare Pages содержит только публичный клиентский код; GitHub-репозиторий может оставаться приватным.
 - ИИ-секреты хранятся только в Cloudflare Worker secrets.
 - Worker не имеет Firebase service account и не записывает дневник.
 - Ответ ИИ имеет единый контракт `{ advice, proposedMeal }`.
@@ -51,17 +53,16 @@
 
 ## Известные ограничения / незавершённая внешняя настройка
 
-- Нужно добавить `nutriciolog.pages.dev` в Firebase Authorized domains.
-- Нужно добавить `AI_ALLOWED_EMAILS` в Cloudflare Worker secrets и проверить вход/запрос к ИИ.
+- Доступ ИИ зависит от ручного сопровождения секрета `AI_ALLOWED_EMAILS` в Cloudflare: при изменении списка пользователей обновлять нужно только этот секрет.
 - Надёжные межустройственные push-уведомления/FCM не настроены; текущая реализация — локальная браузерная заготовка.
 - Фото постоянно не хранятся; Firebase Storage не настроен и сейчас не требуется.
 
 ## Следующий рекомендуемый шаг
 
-1. В Firebase добавить `nutriciolog.pages.dev` в Authorized domains.
-2. В Cloudflare добавить секрет `AI_ALLOWED_EMAILS` и указать разрешённые email.
-3. Проверить вход через Google и доступ к ИИ с разрешённого и неразрешённого аккаунтов.
+1. При необходимости добавить или убрать пользователей в секрете `AI_ALLOWED_EMAILS` Cloudflare.
+2. Настроить бюджет и официальный доступ выбранного ИИ-провайдера, если потребуется расширять использование советов.
+3. При необходимости подключить Firebase Storage или межустройственные push-уведомления отдельной задачей.
 
 ## Для следующей сессии Codex
 
-Сначала прочитать `AGENTS.md`, этот файл и `README.md`, затем выполнить `git status` и проверить фактические файлы. Не считать Worker готовым к публикации, пока не решено отсутствие `worker/src/providers/`.
+Сначала прочитать `AGENTS.md`, этот файл и `README.md`, затем выполнить `git status` и проверить фактические файлы. Worker и Pages опубликованы; перед изменением доступа к ИИ всегда проверять, что CORS и `AI_ALLOWED_EMAILS` остаются ограничительными.
