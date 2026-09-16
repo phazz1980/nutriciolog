@@ -1,7 +1,7 @@
 import { getProvider } from "./providers/index.js";
 
 const cors = {
-  "Access-Control-Allow-Origin": "https://YOUR_GITHUB_USERNAME.github.io",
+  "Access-Control-Allow-Origin": "https://phazz1980.github.io",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };

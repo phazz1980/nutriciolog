@@ -12,8 +12,8 @@
 
 1. Создайте Worker в Cloudflare и загрузите содержимое папки `worker` (или выполните публикацию через Wrangler у себя).
 2. В настройках Worker добавьте секрет с именем `OPENAI_API_KEY`. Его значением служит ваш ключ OpenAI. Не добавляйте его в `index.html`, `wrangler.toml`, GitHub или сообщения.
-3. В `worker/src/index.js` замените `https://YOUR_GITHUB_USERNAME.github.io` на точный origin вашей GitHub Pages-страницы, например `https://anna.github.io`. Это ограничит обращения к вашему сайту.
-4. После публикации Worker скопируйте его URL, добавьте `/api/advice` и замените значение `AI_ENDPOINT` в `index.html`. Например: `https://my-nutritionist-advice.ваш-поддомен.workers.dev/api/advice`.
+3. В `worker/src/index.js` указан origin GitHub Pages `https://phazz1980.github.io`, поэтому Worker принимает запросы только с этого домена.
+4. Worker опубликован по адресу `https://my-nutritionist-advice.340052.workers.dev/api/advice`; это значение уже задано в `index.html`.
 5. Загрузите обновлённый `index.html` в GitHub. Теперь вкладка «Совет» сможет отправлять вопросы через Worker.
 
 ## Ограничения

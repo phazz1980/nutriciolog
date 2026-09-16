@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — текущее состояние проекта
 
-Последняя проверка репозитория: 2026-09-15
+Последняя проверка репозитория: 2026-09-16
 
 ## Проект
 
@@ -24,21 +24,18 @@
 
 ## Текущие настройки, требующие внимания
 
-- В `index.html` `AI_ENDPOINT` всё ещё равен `https://YOUR-WORKER.workers.dev/api/advice`. Реальный Worker URL не подключён в этой копии.
-- В `worker/src/index.js` CORS всё ещё содержит `https://YOUR_GITHUB_USERNAME.github.io`. Перед публикацией нужен реальный GitHub Pages origin.
+- `AI_ENDPOINT` настроен на опубликованный Cloudflare Worker `my-nutritionist-advice`.
+- CORS Worker разрешает только origin GitHub Pages `https://phazz1980.github.io`.
 - Firebase Web config в `firebase-client.js` заполнен для проекта `my-nutritionist-67ce8`.
 - `googleAuthReady = false`: Google Authentication намеренно не активирован до настройки Google provider/support email/authorized domain.
 - `OPENAI_API_KEY` должен существовать только как Cloudflare Worker secret; в репозитории его быть не должно.
 
-## Важное обнаруженное несоответствие
+## Проверенная конфигурация Worker
 
-`worker/src/index.js` импортирует:
-
-`./providers/index.js`
-
-но в предоставленном архиве `x20.zip` папки/файлов `worker/src/providers/` нет. README также описывает эту структуру и адаптеры провайдеров. В текущем виде Worker из этого архива не сможет успешно загрузить этот импорт.
-
-Перед развёртыванием Worker нужно либо восстановить отсутствующие provider-файлы из актуальной версии проекта, либо реализовать их как отдельную согласованную задачу. Не маскировать эту проблему случайным изменением архитектуры.
+- Адаптеры `worker/src/providers/index.js` и `worker/src/providers/openai.js` присутствуют и подключены.
+- Worker создан в Cloudflare как `my-nutritionist-advice`, GitHub-репозиторий подключён для сборок.
+- `OPENAI_API_KEY` добавлен пользователем в Cloudflare как секрет и не находится в репозитории.
+- Домен `workers.dev` включён; URL Worker настроен в клиенте.
 
 ## Ключевые архитектурные решения
 
@@ -53,19 +50,16 @@
 
 ## Известные ограничения / незавершённая внешняя настройка
 
-- Нужен реальный URL Cloudflare Worker в `AI_ENDPOINT`.
-- Нужен реальный разрешённый GitHub Pages origin в CORS Worker.
-- Нужно проверить/восстановить отсутствующий `worker/src/providers/`.
+- Нужно проверить запрос к Worker после публикации сайта на GitHub Pages.
 - Google sign-in пока отключён.
 - Надёжные межустройственные push-уведомления/FCM не настроены; текущая реализация — локальная браузерная заготовка.
 - Фото постоянно не хранятся; Firebase Storage не настроен и сейчас не требуется.
 
 ## Следующий рекомендуемый шаг
 
-1. Найти актуальную версию `worker/src/providers/` или подтвердить, что её нужно реализовать заново.
-2. После этого локально проверить Worker на корректность импортов и контракт `{ advice, proposedMeal }`.
-3. Настроить реальный Cloudflare Worker URL и GitHub Pages CORS origin.
-4. Только после проверки выполнить публикацию/синхронизацию через GitHub.
+1. Включить GitHub Pages для ветки `main` и проверить опубликованный сайт.
+2. Отправить тестовый вопрос во вкладке «Совет» и убедиться, что Worker отвечает.
+3. При необходимости настроить Firebase и Google sign-in отдельно.
 
 ## Для следующей сессии Codex
 
