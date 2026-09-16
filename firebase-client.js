@@ -18,7 +18,7 @@ async function loadProfile() {
   if (!configured || !user || !db) return localProfile ? JSON.parse(localProfile) : null;
   const { doc, getDoc } = window.__firestore;
   const snapshot = await getDoc(doc(db, "users", user.uid, "profile", "main"));
-  return snapshot.exists() ? snapshot.data() : (localProfile ? JSON.parse(localProfile) : null);
+  return snapshot.exists() ? snapshot.data() : null;
 }
 
 async function initFirebase() {
