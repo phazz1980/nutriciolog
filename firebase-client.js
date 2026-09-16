@@ -74,7 +74,7 @@ async function save(collection, id, value) {
 window.nutritionStore = {
   saveProfile: profile => save("profile", "main", profile),
   loadProfile,
-  getAccountProfileDefaults: () => ({ name: user?.displayName || "", photoUrl: user?.photoURL || "" }),
+  getAccountProfileDefaults: () => ({ name: user?.displayName || "", email: user?.email || "", photoUrl: user?.photoURL || "" }),
   saveDayPlan: plan => save("dayPlans", plan.date, plan),
   saveWaterLog: log => save("waterLogs", log.date, log),
   saveWeightEntry: entry => save("weightEntries", entry.date, entry),
