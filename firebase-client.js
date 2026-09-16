@@ -12,6 +12,7 @@ const configured = !Object.values(firebaseConfig).some(value => value.startsWith
 const googleAuthReady = true;
 let db, user = null;
 const key = (name, date = "") => `my-nutritionist:${name}:${date}`;
+const reportDebug = detail => window.dispatchEvent(new CustomEvent("nutrition-debug", { detail }));
 
 async function loadProfile() {
   const localProfile = localStorage.getItem(key("profile:main"));
@@ -30,7 +31,12 @@ async function initFirebase() {
   ]);
   const app = initializeApp(firebaseConfig);
   db = firestoreSdk.getFirestore(app);
-  authSdk.onAuthStateChanged(authSdk.getAuth(app), current => { user = current; updateStatus(); window.dispatchEvent(new Event("nutrition-auth-changed")); });
+  authSdk.onAuthStateChanged(authSdk.getAuth(app), current => {
+    user = current;
+    updateStatus();
+    reportDebug({ type: "auth", configured, signedIn: Boolean(current) });
+    window.dispatchEvent(new Event("nutrition-auth-changed"));
+  });
   window.firebaseSignInWithGoogle = async () => authSdk.signInWithPopup(authSdk.getAuth(app), new authSdk.GoogleAuthProvider());
   window.firebaseSignOut = () => authSdk.signOut(authSdk.getAuth(app));
   window.getFirebaseIdToken = async () => user ? user.getIdToken() : null;
@@ -65,10 +71,20 @@ function updateAuthUI() {
 }
 
 async function save(collection, id, value) {
-  if (!configured || !user || !db) { localStorage.setItem(key(`${collection}:${id}`), JSON.stringify(value)); return { mode: "local" }; }
-  const { doc, setDoc, serverTimestamp } = window.__firestore;
-  await setDoc(doc(db, "users", user.uid, collection, id), { ...value, updatedAt: serverTimestamp() }, { merge: true });
-  return { mode: "cloud" };
+  if (!configured || !user || !db) {
+    localStorage.setItem(key(`${collection}:${id}`), JSON.stringify(value));
+    reportDebug({ type: "save", mode: "local", collection, reason: "Нет авторизованного Firebase-пользователя" });
+    return { mode: "local" };
+  }
+  try {
+    const { doc, setDoc, serverTimestamp } = window.__firestore;
+    await setDoc(doc(db, "users", user.uid, collection, id), { ...value, updatedAt: serverTimestamp() }, { merge: true });
+    reportDebug({ type: "save", mode: "cloud", collection });
+    return { mode: "cloud" };
+  } catch (error) {
+    reportDebug({ type: "save", mode: "error", collection, reason: String(error?.code || error?.message || "Неизвестная ошибка").slice(0, 180) });
+    throw error;
+  }
 }
 
 window.nutritionStore = {
