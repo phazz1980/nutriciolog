@@ -9,7 +9,7 @@ const firebaseConfig = {
 };
 
 const configured = !Object.values(firebaseConfig).some(value => value.startsWith("YOUR_"));
-const googleAuthReady = false; // Set true only after Google provider + support email are saved in Firebase Console.
+const googleAuthReady = true;
 let db, user = null;
 const key = (name, date = "") => `my-nutritionist:${name}:${date}`;
 
@@ -25,6 +25,7 @@ async function initFirebase() {
   authSdk.onAuthStateChanged(authSdk.getAuth(app), current => { user = current; updateStatus(); });
   window.firebaseSignInWithGoogle = async () => authSdk.signInWithPopup(authSdk.getAuth(app), new authSdk.GoogleAuthProvider());
   window.firebaseSignOut = () => authSdk.signOut(authSdk.getAuth(app));
+  window.getFirebaseIdToken = async () => user ? user.getIdToken() : null;
   window.firebaseSignInWithEmail = (email, password) => authSdk.signInWithEmailAndPassword(authSdk.getAuth(app), email, password);
   window.firebaseRegisterWithEmail = (email, password) => authSdk.createUserWithEmailAndPassword(authSdk.getAuth(app), email, password);
   window.__firestore = firestoreSdk;

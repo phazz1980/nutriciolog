@@ -1,20 +1,20 @@
 # Мой нутрициолог
 
-Это статический кликабельный прототип. Он публикуется через GitHub Pages, а будущая ИИ-консультация выполняется Cloudflare Worker: ключ OpenAI остаётся в секрете Worker и никогда не загружается в браузер.
+Это статический PWA, опубликованный через Cloudflare Pages. ИИ-консультация выполняется Cloudflare Worker: ключ провайдера остаётся в секрете Worker и никогда не загружается в браузер.
 
-## GitHub Pages
+## Cloudflare Pages
 
 1. Создайте GitHub-репозиторий и загрузите в его корень `index.html`, `README.md` и папку `worker`.
-2. В GitHub откройте **Settings → Pages**. В поле Source выберите **Deploy from a branch**, ветку `main` и папку `/(root)`.
-3. GitHub выдаст адрес вида `https://ВАШ_ЛОГИН.github.io/ИМЯ_РЕПОЗИТОРИЯ/`. Откройте его после публикации.
+2. В Cloudflare откройте **Workers & Pages → Create application → Pages → Import an existing Git repository** и выберите репозиторий.
+3. Для этого статического проекта задайте ветку `main`, build command `exit 0` и build output directory `.`. Cloudflare выдаст адрес на `pages.dev`.
 
 ## Защищённый сервер советов
 
 1. Создайте Worker в Cloudflare и загрузите содержимое папки `worker` (или выполните публикацию через Wrangler у себя).
 2. В настройках Worker добавьте секрет с именем `OPENAI_API_KEY`. Его значением служит ваш ключ OpenAI. Не добавляйте его в `index.html`, `wrangler.toml`, GitHub или сообщения.
-3. В `worker/src/index.js` указан origin GitHub Pages `https://phazz1980.github.io`, поэтому Worker принимает запросы только с этого домена.
+3. В `worker/src/index.js` указан origin сайта `https://nutriciolog.pages.dev`, поэтому Worker принимает запросы только с этого домена.
 4. Worker опубликован по адресу `https://my-nutritionist-advice.340052.workers.dev/api/advice`; это значение уже задано в `index.html`.
-5. Загрузите обновлённый `index.html` в GitHub. Теперь вкладка «Совет» сможет отправлять вопросы через Worker.
+5. Добавьте секрет Worker `AI_ALLOWED_EMAILS` со списком разрешённых адресов через запятую. Без этого секрета Worker откажет всем запросам к ИИ.
 
 ## Ограничения
 
@@ -25,7 +25,7 @@
 Firebase хранит данные приложения и вход пользователя. Cloudflare Worker остаётся только шлюзом к ИИ; у него нет доступа к Firestore и ему не нужен Firebase service account.
 
 1. В Firebase Console создайте проект и добавьте Web App. Скопируйте **публичную** конфигурацию Web App в `firebase-client.js`, заменив все `YOUR_...`. Это не секрет и не содержит ключ OpenAI.
-2. Google Authentication пока не активирован: Firebase требует адрес поддержки, а пользователь решил его сейчас не указывать. После выбора адреса в **Authentication → Sign-in method → Google** сохраните провайдер, добавьте домен GitHub Pages (например, `ваш-логин.github.io`) в **Authorized domains**, затем измените `googleAuthReady` в `firebase-client.js` на `true`. До этого интерфейс остаётся в гостевом режиме. Email/Password остаётся возможным расширением, но не показан в текущем UI.
+2. В **Authentication → Sign-in method → Google** включите провайдер и укажите support email. В **Authorized domains** добавьте `nutriciolog.pages.dev`. Вход через Google нужен для синхронизации и является обязательным для доступа к ИИ.
 3. В **Firestore Database** создайте базу и опубликуйте правила из `firestore.rules`. Они разрешают доступ только к документам текущего пользователя: `users/{uid}/...`.
 4. Данные организованы так: `users/{uid}/profile/main`, `dayPlans/{YYYY-MM-DD}`, `foodDiary/{дата-uuid}`, `waterLogs/{YYYY-MM-DD}`, `weightEntries/{YYYY-MM-DD}`. Без конфигурации Firebase сохранение безопасно остаётся локальным в браузере.
 

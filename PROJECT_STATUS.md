@@ -25,9 +25,9 @@
 ## Текущие настройки, требующие внимания
 
 - `AI_ENDPOINT` настроен на опубликованный Cloudflare Worker `my-nutritionist-advice`.
-- CORS Worker разрешает только origin GitHub Pages `https://phazz1980.github.io`.
+- CORS Worker разрешает только origin Cloudflare Pages `https://nutriciolog.pages.dev`.
 - Firebase Web config в `firebase-client.js` заполнен для проекта `my-nutritionist-67ce8`.
-- `googleAuthReady = false`: Google Authentication намеренно не активирован до настройки Google provider/support email/authorized domain.
+- Google Authentication включён в Firebase и активирован в клиенте; `nutriciolog.pages.dev` ещё нужно добавить в Firebase Authorized domains.
 - `OPENAI_API_KEY` должен существовать только как Cloudflare Worker secret; в репозитории его быть не должно.
 
 ## Проверенная конфигурация Worker
@@ -36,6 +36,7 @@
 - Worker создан в Cloudflare как `my-nutritionist-advice`, GitHub-репозиторий подключён для сборок.
 - `OPENAI_API_KEY` добавлен пользователем в Cloudflare как секрет и не находится в репозитории.
 - Домен `workers.dev` включён; URL Worker настроен в клиенте.
+- Worker проверяет Firebase ID token и разрешает ИИ только адресам из секрета Cloudflare `AI_ALLOWED_EMAILS`; без списка доступ запрещён всем.
 
 ## Ключевые архитектурные решения
 
@@ -50,16 +51,16 @@
 
 ## Известные ограничения / незавершённая внешняя настройка
 
-- Нужно проверить запрос к Worker после публикации сайта на GitHub Pages.
-- Google sign-in пока отключён.
+- Нужно добавить `nutriciolog.pages.dev` в Firebase Authorized domains.
+- Нужно добавить `AI_ALLOWED_EMAILS` в Cloudflare Worker secrets и проверить вход/запрос к ИИ.
 - Надёжные межустройственные push-уведомления/FCM не настроены; текущая реализация — локальная браузерная заготовка.
 - Фото постоянно не хранятся; Firebase Storage не настроен и сейчас не требуется.
 
 ## Следующий рекомендуемый шаг
 
-1. Включить GitHub Pages для ветки `main` и проверить опубликованный сайт.
-2. Отправить тестовый вопрос во вкладке «Совет» и убедиться, что Worker отвечает.
-3. При необходимости настроить Firebase и Google sign-in отдельно.
+1. В Firebase добавить `nutriciolog.pages.dev` в Authorized domains.
+2. В Cloudflare добавить секрет `AI_ALLOWED_EMAILS` и указать разрешённые email.
+3. Проверить вход через Google и доступ к ИИ с разрешённого и неразрешённого аккаунтов.
 
 ## Для следующей сессии Codex
 
