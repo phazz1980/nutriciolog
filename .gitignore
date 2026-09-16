@@ -1,0 +1,39 @@
+# OS / editors
+.DS_Store
+Thumbs.db
+Desktop.ini
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*.bak
+*.orig
+
+# Node / Wrangler local state (if tools are used later)
+node_modules/
+.wrangler/
+.dev.vars
+.dev.vars.*
+
+# Environment/secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local Firebase tooling state
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Build/test output
+coverage/
+dist/
+build/

@@ -1,0 +1,14 @@
+{
+  "name": "Мой нутрициолог",
+  "short_name": "Нутрициолог",
+  "description": "Личный дневник питания, воды, веса и планов",
+  "lang": "ru",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2d9b72",
+  "icons": [
+    { "src": "./icons/app-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

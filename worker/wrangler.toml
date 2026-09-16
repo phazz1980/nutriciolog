@@ -1,0 +1,8 @@
+name = "my-nutritionist-advice"
+main = "src/index.js"
+compatibility_date = "2026-09-15"
+
+[vars]
+AI_PROVIDER = "openai"
+
+# Never put OPENAI_API_KEY here or in Git. Add it as a Cloudflare Worker secret.
