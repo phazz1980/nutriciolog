@@ -13,6 +13,14 @@ const googleAuthReady = true;
 let db, user = null;
 const key = (name, date = "") => `my-nutritionist:${name}:${date}`;
 
+async function loadProfile() {
+  const localProfile = localStorage.getItem(key("profile:main"));
+  if (!configured || !user || !db) return localProfile ? JSON.parse(localProfile) : null;
+  const { doc, getDoc } = window.__firestore;
+  const snapshot = await getDoc(doc(db, "users", user.uid, "profile", "main"));
+  return snapshot.exists() ? snapshot.data() : (localProfile ? JSON.parse(localProfile) : null);
+}
+
 async function initFirebase() {
   if (!configured) return;
   const [{ initializeApp }, authSdk, firestoreSdk] = await Promise.all([
@@ -22,7 +30,7 @@ async function initFirebase() {
   ]);
   const app = initializeApp(firebaseConfig);
   db = firestoreSdk.getFirestore(app);
-  authSdk.onAuthStateChanged(authSdk.getAuth(app), current => { user = current; updateStatus(); });
+  authSdk.onAuthStateChanged(authSdk.getAuth(app), current => { user = current; updateStatus(); window.dispatchEvent(new Event("nutrition-auth-changed")); });
   window.firebaseSignInWithGoogle = async () => authSdk.signInWithPopup(authSdk.getAuth(app), new authSdk.GoogleAuthProvider());
   window.firebaseSignOut = () => authSdk.signOut(authSdk.getAuth(app));
   window.getFirebaseIdToken = async () => user ? user.getIdToken() : null;
@@ -65,11 +73,15 @@ async function save(collection, id, value) {
 
 window.nutritionStore = {
   saveProfile: profile => save("profile", "main", profile),
+  loadProfile,
+  getAccountProfileDefaults: () => ({ name: user?.displayName || "", photoUrl: user?.photoURL || "" }),
   saveDayPlan: plan => save("dayPlans", plan.date, plan),
   saveWaterLog: log => save("waterLogs", log.date, log),
   saveWeightEntry: entry => save("weightEntries", entry.date, entry),
   saveDiaryEntry: entry => save("foodDiary", `${entry.date}-${crypto.randomUUID()}`, entry),
 };
+
+window.dispatchEvent(new Event("nutritionstore-ready"));
 
 window.addProposedMeal = async meal => {
   if (!meal || !meal.title || !Number.isFinite(Number(meal.calories))) throw new Error("Некорректное предложение блюда");

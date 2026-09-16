@@ -20,7 +20,9 @@
 - `manifest.webmanifest`, `service-worker.js`, `pwa.js`, `notifications.js`, `icons/app-icon.svg` — PWA/уведомления.
 - `worker/wrangler.toml` — Worker `my-nutritionist-advice`, `AI_PROVIDER = "openai"`.
 - `worker/src/index.js` — HTTP-обработчик `/api/advice`/Worker: POST/OPTIONS, CORS, валидация текста и фото, вызов выбранного ИИ-провайдера.
+- `worker/src/providers/` — адаптер OpenAI и выбор провайдера; системная инструкция ограничивает ответы общими вопросами питания и ЗОЖ.
 - `README.md` — инструкции по GitHub Pages, Cloudflare Worker, Firebase, фото, голосу, PWA и уведомлениям.
+- В профиле есть форма редактирования имени, возраста, роста, текущего/целевого веса, цели и дневной нормы; значения сохраняются в `profile/main` через Firebase или в local fallback. При Google-входе имя аккаунта может служить начальным значением, но медицинские параметры не запрашиваются у Google.
 
 ## Текущие настройки, требующие внимания
 
