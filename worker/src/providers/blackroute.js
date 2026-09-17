@@ -19,7 +19,14 @@ export function createBlackrouteProvider(apiKey, model = "deepseek-v3.2-maas") {
           response_format: { type: "json_object" },
         }),
       });
-      if (!response.ok) throw new Error(`Blackroute request failed (${response.status})`);
+      if (!response.ok) {
+        let code = "";
+        try {
+          const error = await response.json();
+          code = String(error?.error?.code || error?.error?.type || "").slice(0, 60);
+        } catch {}
+        throw new Error(`Blackroute request failed (${response.status}${code ? `:${code}` : ""})`);
+      }
       const data = await response.json();
       const content = data?.choices?.[0]?.message?.content;
       if (typeof content !== "string") throw new Error("Blackroute returned an invalid response");

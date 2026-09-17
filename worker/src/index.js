@@ -25,7 +25,11 @@ export default {
     } catch (error) {
       if (error instanceof AccessError) return json({ error: error.message }, 401);
       if (error instanceof SyntaxError) return json({ error: "ИИ вернул ответ в неподходящем формате. Повторите запрос." }, 502);
-      if (error instanceof Error && error.message.startsWith("Blackroute request failed")) return json({ error: "Blackroute временно не принял запрос. Попробуйте другую модель." }, 502);
+      if (error instanceof Error && error.message.startsWith("Blackroute request failed")) {
+        const status = error.message.match(/\((\d{3})/)?.[1];
+        const message = status === "401" ? "Blackroute не принял ключ API. Проверьте секрет Worker." : status === "404" ? "Выбранная модель недоступна в Blackroute." : status === "429" ? "Лимит Blackroute исчерпан. Попробуйте позже." : "Blackroute временно не принял запрос. Попробуйте другую модель.";
+        return json({ error: message }, 502);
+      }
       if (error instanceof Error && error.message.startsWith("Blackroute returned")) return json({ error: "Blackroute вернул неполный ответ. Повторите запрос или выберите другую модель." }, 502);
       return json({ error: "Некорректный запрос." }, 400);
     }
