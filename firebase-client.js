@@ -87,6 +87,35 @@ async function save(collection, id, value) {
   }
 }
 
+function normalizeProductName(name) {
+  return String(name || "").normalize("NFKD").toLocaleLowerCase("ru-RU").replace(/[^a-zа-яё0-9]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 120);
+}
+
+async function loadProduct(name) {
+  const normalizedName = normalizeProductName(name);
+  if (!normalizedName) return null;
+  const localProduct = localStorage.getItem(key("products", normalizedName));
+  if (!configured || !user || !db) return localProduct ? JSON.parse(localProduct) : null;
+  const { doc, getDoc } = window.__firestore;
+  const snapshot = await getDoc(doc(db, "users", user.uid, "products", normalizedName));
+  return snapshot.exists() ? snapshot.data() : null;
+}
+
+async function saveProduct(product) {
+  const title = String(product?.title || "").trim();
+  const normalizedName = normalizeProductName(title);
+  if (!normalizedName || !Number.isFinite(Number(product?.calories))) throw new Error("Некорректный продукт");
+  return save("products", normalizedName, {
+    title,
+    normalizedName,
+    portion: Number(product.portion) || null,
+    calories: Number(product.calories),
+    protein: Number(product.protein) || 0,
+    fat: Number(product.fat) || 0,
+    carbs: Number(product.carbs) || 0,
+  });
+}
+
 window.nutritionStore = {
   saveProfile: profile => save("profile", "main", profile),
   loadProfile,
@@ -95,6 +124,8 @@ window.nutritionStore = {
   saveWaterLog: log => save("waterLogs", log.date, log),
   saveWeightEntry: entry => save("weightEntries", entry.date, entry),
   saveDiaryEntry: entry => save("foodDiary", `${entry.date}-${crypto.randomUUID()}`, entry),
+  loadProduct,
+  saveProduct,
 };
 
 window.dispatchEvent(new Event("nutritionstore-ready"));
@@ -102,6 +133,23 @@ window.dispatchEvent(new Event("nutritionstore-ready"));
 window.addProposedMeal = async meal => {
   if (!meal || !meal.title || !Number.isFinite(Number(meal.calories))) throw new Error("Некорректное предложение блюда");
   return window.nutritionStore.saveDiaryEntry({ date: new Date().toISOString().slice(0, 10), mealType: meal.mealType || "Перекус", title: meal.title, calories: Number(meal.calories), source: "ai-confirmed" });
+};
+
+window.addProposedProduct = async product => {
+  if (!product || !product.title || !Number.isFinite(Number(product.calories))) throw new Error("Некорректное предложение продукта");
+  const entry = {
+    date: new Date().toISOString().slice(0, 10),
+    mealType: product.mealType || "Перекус",
+    title: String(product.title).trim(),
+    portion: Number(product.portion) || null,
+    calories: Number(product.calories),
+    protein: Number(product.protein) || 0,
+    fat: Number(product.fat) || 0,
+    carbs: Number(product.carbs) || 0,
+    source: "ai-product-confirmed",
+  };
+  await window.nutritionStore.saveDiaryEntry(entry);
+  await window.nutritionStore.saveProduct(entry);
 };
 
 initFirebase().catch(() => { updateStatus(); });

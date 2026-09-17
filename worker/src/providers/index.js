@@ -2,7 +2,7 @@ import { createOpenAIProvider } from "./openai.js";
 import { createBlackrouteProvider } from "./blackroute.js";
 
 // Every provider must expose supportsVision and advise(message, image?) and return exactly:
-// { advice: string, proposedMeal: null | { title: string, calories: number, mealType: string } }
+// { advice: string, proposedMeal: null | { title: string, calories: number, mealType: string }, proposedProducts: [] }
 const blackrouteModels = new Set([
   "deepseek-v3.2-maas",
   "gemini-3.5-flash-lite",
