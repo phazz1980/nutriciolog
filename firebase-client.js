@@ -116,6 +116,21 @@ async function saveProduct(product) {
   });
 }
 
+async function loadDiaryEntries(date) {
+  if (!configured || !user || !db) {
+    const prefix = key("foodDiary");
+    return Object.keys(localStorage).filter(storageKey => storageKey.startsWith(prefix)).flatMap(storageKey => {
+      try {
+        const entry = JSON.parse(localStorage.getItem(storageKey));
+        return entry?.date === date ? [entry] : [];
+      } catch { return []; }
+    });
+  }
+  const { collection, getDocs, query, where } = window.__firestore;
+  const snapshot = await getDocs(query(collection(db, "users", user.uid, "foodDiary"), where("date", "==", date)));
+  return snapshot.docs.map(document => document.data());
+}
+
 window.nutritionStore = {
   saveProfile: profile => save("profile", "main", profile),
   loadProfile,
@@ -124,6 +139,7 @@ window.nutritionStore = {
   saveWaterLog: log => save("waterLogs", log.date, log),
   saveWeightEntry: entry => save("weightEntries", entry.date, entry),
   saveDiaryEntry: entry => save("foodDiary", `${entry.date}-${crypto.randomUUID()}`, entry),
+  loadDiaryEntries,
   loadProduct,
   saveProduct,
 };
@@ -132,13 +148,13 @@ window.dispatchEvent(new Event("nutritionstore-ready"));
 
 window.addProposedMeal = async meal => {
   if (!meal || !meal.title || !Number.isFinite(Number(meal.calories))) throw new Error("Некорректное предложение блюда");
-  return window.nutritionStore.saveDiaryEntry({ date: new Date().toISOString().slice(0, 10), mealType: meal.mealType || "Перекус", title: meal.title, calories: Number(meal.calories), source: "ai-confirmed" });
+  return window.nutritionStore.saveDiaryEntry({ date: meal.date || new Date().toISOString().slice(0, 10), mealType: meal.mealType || "Перекус", title: meal.title, calories: Number(meal.calories), source: "ai-confirmed" });
 };
 
 window.addProposedProduct = async product => {
   if (!product || !product.title || !Number.isFinite(Number(product.calories))) throw new Error("Некорректное предложение продукта");
   const entry = {
-    date: new Date().toISOString().slice(0, 10),
+    date: product.date || new Date().toISOString().slice(0, 10),
     mealType: product.mealType || "Перекус",
     title: String(product.title).trim(),
     portion: Number(product.portion) || null,

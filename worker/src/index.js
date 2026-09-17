@@ -10,7 +10,7 @@ export default {
   async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response(null, { headers: cors });
     if (request.method === "GET" && new URL(request.url).pathname === "/api/health") {
-      return json({ status: "ok", version: "0.1.13", provider: env.AI_PROVIDER || null, model: env.BLACKROUTE_MODEL || null, apiKeyConfigured: Boolean(env.BLACKROUTE_API_KEY) });
+      return json({ status: "ok", version: "0.1.14", provider: env.AI_PROVIDER || null, model: env.BLACKROUTE_MODEL || null, apiKeyConfigured: Boolean(env.BLACKROUTE_API_KEY) });
     }
     if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
     try {
