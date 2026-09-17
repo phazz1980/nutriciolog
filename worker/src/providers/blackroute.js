@@ -16,14 +16,13 @@ export function createBlackrouteProvider(apiKey, model = "deepseek-v3.2-maas") {
           ],
           temperature: 0.3,
           max_tokens: 300,
-          response_format: { type: "json_object" },
         }),
       });
-      if (!response.ok) throw new Error("Blackroute request failed");
+      if (!response.ok) throw new Error(`Blackroute request failed (${response.status})`);
       const data = await response.json();
       const content = data?.choices?.[0]?.message?.content;
       if (typeof content !== "string") throw new Error("Blackroute returned an invalid response");
-      const result = JSON.parse(content);
+      const result = JSON.parse(content.replace(/^```(?:json)?\s*|\s*```$/g, "").trim());
       if (typeof result?.advice !== "string" || !(result.proposedMeal === null || typeof result.proposedMeal === "object")) throw new Error("Blackroute returned an invalid result");
       return result;
     },

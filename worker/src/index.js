@@ -25,6 +25,8 @@ export default {
       return json(result);
     } catch (error) {
       if (error instanceof AccessError) return json({ error: error.message }, 401);
+      if (error instanceof SyntaxError) return json({ error: "ИИ вернул ответ в неподходящем формате. Повторите запрос." }, 502);
+      if (error instanceof Error && error.message.startsWith("Blackroute request failed")) return json({ error: "Blackroute временно не принял запрос. Попробуйте другую модель." }, 502);
       return json({ error: "Некорректный запрос." }, 400);
     }
   },
