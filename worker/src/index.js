@@ -13,12 +13,13 @@ export default {
     try {
       const claims = await verifyFirebaseToken(request.headers.get("Authorization"));
       assertAllowedEmail(claims.email, env.AI_ALLOWED_EMAILS);
-      const { message, image = null } = await request.json();
+      const { message, image = null, model = null } = await request.json();
       if (typeof message !== "string" || !message.trim() || message.length > 1000) {
         return json({ error: "Введите вопрос до 1000 символов." }, 400);
       }
+      if (model !== null && typeof model !== "string") return json({ error: "Недопустимая модель." }, 400);
       if (image && (!/^image\/(jpeg|png|webp)$/.test(image.mimeType || "") || typeof image.dataUrl !== "string" || image.dataUrl.length > 5_600_000)) return json({ error: "Недопустимое фото. Используйте JPEG, PNG или WebP до 4 МБ." }, 400);
-      const provider = getProvider(env);
+      const provider = getProvider(env, model);
       if (image && !provider.supportsVision) return json({ advice: "Этот ИИ пока не умеет анализировать фото. Опишите, пожалуйста, блюдо и примерную порцию текстом.", proposedMeal: null });
       const result = await provider.advise(message.trim(), image);
       return json(result);

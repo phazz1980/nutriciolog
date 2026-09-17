@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — текущее состояние проекта
 
-Последняя проверка репозитория: 2026-09-16 (v0.1.4)
+Последняя проверка репозитория: 2026-09-17 (v0.1.5)
 
 ## Проект
 
@@ -18,14 +18,15 @@
 - `firebase-client.js` — Firebase Web config, Auth/Firestore и локальная работа.
 - `firestore.rules` — доступ к `users/{uid}/...` только текущему авторизованному UID.
 - `manifest.webmanifest`, `service-worker.js`, `pwa.js`, `notifications.js`, `icons/app-icon.svg` — PWA/уведомления.
-- `worker/wrangler.toml` — Worker `my-nutritionist-advice`, `AI_PROVIDER = "openai"`.
+- `worker/wrangler.toml` — Worker `my-nutritionist-advice`, `AI_PROVIDER = "blackroute"`, модель DeepSeek.
 - `worker/src/index.js` — HTTP-обработчик `/api/advice`/Worker: POST/OPTIONS, CORS, валидация текста и фото, вызов выбранного ИИ-провайдера.
-- `worker/src/providers/` — адаптер OpenAI и выбор провайдера; системная инструкция ограничивает ответы общими вопросами питания и ЗОЖ.
+- `worker/src/providers/` — адаптеры Blackroute/OpenAI и выбор провайдера; системная инструкция ограничивает ответы общими вопросами питания и ЗОЖ.
 - `README.md` — инструкции по GitHub Pages, Cloudflare Worker, Firebase, фото, голосу, PWA и уведомлениям.
 - В профиле есть форма редактирования имени, возраста, роста, текущего/целевого веса, цели и дневной нормы; значения сохраняются в `profile/main` через Firebase или в local fallback. При Google-входе в карточке отображаются имя и аватар аккаунта, а email остаётся только в статусе синхронизации. Имя подставляется как начальное значение даже при временной ошибке чтения профиля, но сохранённое пользователем имя не перезаписывается. Медицинские параметры у Google не запрашиваются.
 - После входа приложение не использует гостевой профиль как fallback: загружается только `users/{uid}/profile/main`, чтобы данные другого режима не подменяли профиль аккаунта.
 - Вода, ручные записи дневника, план питания и запись веса сохраняются через `nutritionStore` в соответствующие Firestore-коллекции; без Firebase или входа работает local fallback.
 - Внизу профиля отображаются номер версии и дата выпуска. Их нужно обновлять при каждой фиксации версии одновременно с Git-тегом.
+- В разделе «Совет» есть переключатель Blackroute-моделей: DeepSeek, Gemini, Grok, Qwen и GPT‑OSS. Worker передаёт в Blackroute только модели из разрешённого списка.
 
 ## Текущие настройки, требующие внимания
 
@@ -33,13 +34,13 @@
 - CORS Worker разрешает только origin Cloudflare Pages `https://nutriciolog.pages.dev`.
 - Firebase Web config в `firebase-client.js` заполнен для проекта `my-nutritionist-67ce8`.
 - Google Authentication включён в Firebase, активирован в клиенте, а `nutriciolog.pages.dev` добавлен в Firebase Authorized domains.
-- `OPENAI_API_KEY` должен существовать только как Cloudflare Worker secret; в репозитории его быть не должно.
+- `BLACKROUTE_API_KEY` должен существовать только как Cloudflare Worker secret; в репозитории его быть не должно.
 
 ## Проверенная конфигурация Worker
 
 - Адаптеры `worker/src/providers/index.js` и `worker/src/providers/openai.js` присутствуют и подключены.
 - Worker создан в Cloudflare как `my-nutritionist-advice`, GitHub-репозиторий подключён для сборок.
-- `OPENAI_API_KEY` добавлен пользователем в Cloudflare как секрет и не находится в репозитории.
+- Для активного Blackroute-провайдера в Cloudflare требуется секрет `BLACKROUTE_API_KEY`; в репозитории его быть не должно.
 - Домен `workers.dev` включён; URL Worker настроен в клиенте.
 - Worker проверяет Firebase ID token и разрешает ИИ только адресам из секрета Cloudflare `AI_ALLOWED_EMAILS`; без списка доступ запрещён всем.
 - Сайт опубликован на Cloudflare Pages: `https://nutriciolog.pages.dev/`.
@@ -48,7 +49,7 @@
 ## Ключевые архитектурные решения
 
 - Cloudflare Pages содержит только публичный клиентский код; GitHub-репозиторий может оставаться приватным.
-- ИИ-секреты хранятся только в Cloudflare Worker secrets.
+- ИИ-секреты хранятся только в Cloudflare Worker secrets; активный провайдер — Blackroute с DeepSeek.
 - Worker не имеет Firebase service account и не записывает дневник.
 - Ответ ИИ имеет единый контракт `{ advice, proposedMeal }`.
 - `proposedMeal` является предложением: запись выполняется только после явного подтверждения пользователя.

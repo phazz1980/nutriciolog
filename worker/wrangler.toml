@@ -3,6 +3,7 @@ main = "src/index.js"
 compatibility_date = "2026-09-15"
 
 [vars]
-AI_PROVIDER = "openai"
+AI_PROVIDER = "blackroute"
+BLACKROUTE_MODEL = "deepseek"
 
-# Never put OPENAI_API_KEY here or in Git. Add it as a Cloudflare Worker secret.
+# Never put BLACKROUTE_API_KEY here or in Git. Add it as a Cloudflare Worker secret.
