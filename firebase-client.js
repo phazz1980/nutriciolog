@@ -119,16 +119,16 @@ async function saveProduct(product) {
 async function loadDiaryEntries(date) {
   if (!configured || !user || !db) {
     const prefix = key("foodDiary");
-    return Object.keys(localStorage).filter(storageKey => storageKey.startsWith(prefix)).flatMap(storageKey => {
+    return Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index)).filter(storageKey => storageKey?.startsWith(prefix)).flatMap(storageKey => {
       try {
         const entry = JSON.parse(localStorage.getItem(storageKey));
-        return entry?.date === date ? [entry] : [];
+        return entry?.date === date ? [{ ...entry, id: entry.id || storageKey.slice(prefix.length, -1) }] : [];
       } catch { return []; }
     });
   }
   const { collection, getDocs, query, where } = window.__firestore;
   const snapshot = await getDocs(query(collection(db, "users", user.uid, "foodDiary"), where("date", "==", date)));
-  return snapshot.docs.map(document => document.data());
+  return snapshot.docs.map(document => ({ ...document.data(), id: document.id }));
 }
 
 window.nutritionStore = {
@@ -138,7 +138,20 @@ window.nutritionStore = {
   saveDayPlan: plan => save("dayPlans", plan.date, plan),
   saveWaterLog: log => save("waterLogs", log.date, log),
   saveWeightEntry: entry => save("weightEntries", entry.date, entry),
-  saveDiaryEntry: entry => save("foodDiary", `${entry.date}-${crypto.randomUUID()}`, entry),
+  saveDiaryEntry: entry => {
+    const id = entry.id || crypto.randomUUID();
+    return save("foodDiary", id, { ...entry, id });
+  },
+  deleteDiaryEntry: async id => {
+    if (!id) throw new Error("Не указана запись дневника");
+    if (!configured || !user || !db) {
+      localStorage.removeItem(key(`foodDiary:${id}`));
+      return { mode: "local" };
+    }
+    const { deleteDoc, doc } = window.__firestore;
+    await deleteDoc(doc(db, "users", user.uid, "foodDiary", id));
+    return { mode: "cloud" };
+  },
   loadDiaryEntries,
   loadProduct,
   saveProduct,
@@ -148,12 +161,15 @@ window.dispatchEvent(new Event("nutritionstore-ready"));
 
 window.addProposedMeal = async meal => {
   if (!meal || !meal.title || !Number.isFinite(Number(meal.calories))) throw new Error("Некорректное предложение блюда");
-  return window.nutritionStore.saveDiaryEntry({ date: meal.date || new Date().toISOString().slice(0, 10), mealType: meal.mealType || "Перекус", title: meal.title, calories: Number(meal.calories), source: "ai-confirmed" });
+  meal.id ||= crypto.randomUUID();
+  return window.nutritionStore.saveDiaryEntry({ date: meal.date || new Date().toISOString().slice(0, 10), id: meal.id, mealType: meal.mealType || "Перекус", title: meal.title, calories: Number(meal.calories), source: "ai-confirmed" });
 };
 
 window.addProposedProduct = async product => {
   if (!product || !product.title || !Number.isFinite(Number(product.calories))) throw new Error("Некорректное предложение продукта");
+  product.id ||= crypto.randomUUID();
   const entry = {
+    id: product.id,
     date: product.date || new Date().toISOString().slice(0, 10),
     mealType: product.mealType || "Перекус",
     title: String(product.title).trim(),
