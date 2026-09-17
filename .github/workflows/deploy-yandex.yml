@@ -1,0 +1,38 @@
+name: Deploy to Yandex Object Storage
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS CLI
+        run: |
+          aws configure set aws_access_key_id "${{ secrets.YC_ACCESS_KEY_ID }}"
+          aws configure set aws_secret_access_key "${{ secrets.YC_SECRET_ACCESS_KEY }}"
+          aws configure set region ru-central1
+
+      - name: Prepare website
+        run: |
+          mkdir -p deploy
+          cp index.html deploy/
+          cp firebase-client.js deploy/
+          cp notifications.js deploy/
+          cp pwa.js deploy/
+          cp service-worker.js deploy/
+          cp manifest.webmanifest deploy/
+          cp -r icons deploy/
+
+      - name: Deploy to Yandex Object Storage
+        run: |
+          aws s3 sync deploy/ s3://nutriciolog-x20/ \
+            --endpoint-url=https://storage.yandexcloud.net \
+            --delete
