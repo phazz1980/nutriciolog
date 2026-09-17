@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — текущее состояние проекта
 
-Последняя проверка репозитория: 2026-09-17 (v0.1.5)
+Последняя проверка репозитория: 2026-09-17 (v0.1.6)
 
 ## Проект
 
@@ -18,7 +18,7 @@
 - `firebase-client.js` — Firebase Web config, Auth/Firestore и локальная работа.
 - `firestore.rules` — доступ к `users/{uid}/...` только текущему авторизованному UID.
 - `manifest.webmanifest`, `service-worker.js`, `pwa.js`, `notifications.js`, `icons/app-icon.svg` — PWA/уведомления.
-- `worker/wrangler.toml` — Worker `my-nutritionist-advice`, `AI_PROVIDER = "blackroute"`, модель DeepSeek.
+- `worker/wrangler.toml` — Worker `my-nutritionist-advice`, `AI_PROVIDER = "blackroute"`, модель `deepseek-v3.2-maas`.
 - `worker/src/index.js` — HTTP-обработчик `/api/advice`/Worker: POST/OPTIONS, CORS, валидация текста и фото, вызов выбранного ИИ-провайдера.
 - `worker/src/providers/` — адаптеры Blackroute/OpenAI и выбор провайдера; системная инструкция ограничивает ответы общими вопросами питания и ЗОЖ.
 - `README.md` — инструкции по GitHub Pages, Cloudflare Worker, Firebase, фото, голосу, PWA и уведомлениям.
@@ -26,7 +26,7 @@
 - После входа приложение не использует гостевой профиль как fallback: загружается только `users/{uid}/profile/main`, чтобы данные другого режима не подменяли профиль аккаунта.
 - Вода, ручные записи дневника, план питания и запись веса сохраняются через `nutritionStore` в соответствующие Firestore-коллекции; без Firebase или входа работает local fallback.
 - Внизу профиля отображаются номер версии и дата выпуска. Их нужно обновлять при каждой фиксации версии одновременно с Git-тегом.
-- В разделе «Совет» есть переключатель Blackroute-моделей: DeepSeek, Gemini, Grok, Qwen и GPT‑OSS. Worker передаёт в Blackroute только модели из разрешённого списка.
+- В разделе «Совет» есть переключатель подтверждённых Blackroute-моделей: DeepSeek V3.2, Gemini 3.5 Flash Lite, Grok 4.20 Fast, GPT‑OSS 120B и Qwen3 235B. Worker передаёт в Blackroute только модели из разрешённого списка.
 
 ## Текущие настройки, требующие внимания
 
