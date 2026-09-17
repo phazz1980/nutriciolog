@@ -16,6 +16,7 @@ export function createBlackrouteProvider(apiKey, model = "deepseek-v3.2-maas") {
           ],
           temperature: 0.3,
           max_tokens: 300,
+          response_format: { type: "json_object" },
         }),
       });
       if (!response.ok) throw new Error(`Blackroute request failed (${response.status})`);

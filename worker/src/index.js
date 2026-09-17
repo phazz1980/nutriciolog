@@ -11,8 +11,7 @@ export default {
     if (request.method === "OPTIONS") return new Response(null, { headers: cors });
     if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
     try {
-      const claims = await verifyFirebaseToken(request.headers.get("Authorization"));
-      assertAllowedEmail(claims.email, env.AI_ALLOWED_EMAILS);
+      await verifyFirebaseToken(request.headers.get("Authorization"));
       const { message, image = null, model = null } = await request.json();
       if (typeof message !== "string" || !message.trim() || message.length > 1000) {
         return json({ error: "Введите вопрос до 1000 символов." }, 400);
@@ -27,6 +26,7 @@ export default {
       if (error instanceof AccessError) return json({ error: error.message }, 401);
       if (error instanceof SyntaxError) return json({ error: "ИИ вернул ответ в неподходящем формате. Повторите запрос." }, 502);
       if (error instanceof Error && error.message.startsWith("Blackroute request failed")) return json({ error: "Blackroute временно не принял запрос. Попробуйте другую модель." }, 502);
+      if (error instanceof Error && error.message.startsWith("Blackroute returned")) return json({ error: "Blackroute вернул неполный ответ. Повторите запрос или выберите другую модель." }, 502);
       return json({ error: "Некорректный запрос." }, 400);
     }
   },
@@ -52,11 +52,6 @@ async function verifyFirebaseToken(authorization) {
   const valid = await crypto.subtle.verify({ name: "RSASSA-PKCS1-v1_5" }, publicKey, base64UrlToBytes(encodedSignature), textEncoder.encode(`${encodedHeader}.${encodedPayload}`));
   if (!valid) throw new AccessError("Недействительный токен входа.");
   return claims;
-}
-
-function assertAllowedEmail(email, value = "") {
-  const allowed = new Set(value.split(",").map(item => item.trim().toLowerCase()).filter(Boolean));
-  if (!allowed.size || !email || !allowed.has(email.toLowerCase())) throw new AccessError("Для этого аккаунта доступ к ИИ пока не открыт.");
 }
 
 async function getFirebaseCertificate(kid) {
