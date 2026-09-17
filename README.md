@@ -24,6 +24,8 @@
 
 Firebase хранит данные приложения и вход пользователя. Cloudflare Worker остаётся только шлюзом к ИИ; у него нет доступа к Firestore и ему не нужен Firebase service account.
 
+Worker проверяет подпись Firebase ID token через официальный Google JWK endpoint и кэширует публичные ключи по `Cache-Control`. Приватные ключи Firebase или service account ему не передаются.
+
 1. В Firebase Console создайте проект и добавьте Web App. Скопируйте **публичную** конфигурацию Web App в `firebase-client.js`, заменив все `YOUR_...`. Это не секрет и не содержит ключ OpenAI.
 2. В **Authentication → Sign-in method → Google** включите провайдер и укажите support email. В **Authorized domains** добавьте `nutriciolog.pages.dev`. Вход через Google нужен для синхронизации и является обязательным для доступа к ИИ.
 3. В **Firestore Database** создайте базу и опубликуйте правила из `firestore.rules`. Они разрешают доступ только к документам текущего пользователя: `users/{uid}/...`.

@@ -10,7 +10,7 @@ export default {
   async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response(null, { headers: cors });
     if (request.method === "GET" && new URL(request.url).pathname === "/api/health") {
-      return json({ status: "ok", version: "0.1.11", provider: env.AI_PROVIDER || null, model: env.BLACKROUTE_MODEL || null, apiKeyConfigured: Boolean(env.BLACKROUTE_API_KEY) });
+      return json({ status: "ok", version: "0.1.12", provider: env.AI_PROVIDER || null, model: env.BLACKROUTE_MODEL || null, apiKeyConfigured: Boolean(env.BLACKROUTE_API_KEY) });
     }
     if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
     try {
@@ -42,9 +42,9 @@ export default {
 };
 
 const FIREBASE_PROJECT_ID = "my-nutritionist-67ce8";
-const FIREBASE_CERTS_URL = "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com";
+const FIREBASE_JWKS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
 const textEncoder = new TextEncoder();
-let firebaseCerts = { expiresAt: 0, keys: {} };
+let firebaseJwks = { expiresAt: 0, keys: {} };
 
 class AccessError extends Error {}
 
@@ -56,22 +56,24 @@ async function verifyFirebaseToken(authorization) {
   const claims = decodeJwtPart(encodedPayload);
   const now = Math.floor(Date.now() / 1000);
   if (header.alg !== "RS256" || typeof header.kid !== "string" || claims.aud !== FIREBASE_PROJECT_ID || claims.iss !== `https://securetoken.google.com/${FIREBASE_PROJECT_ID}` || typeof claims.sub !== "string" || !claims.sub || claims.exp <= now || claims.iat > now || claims.auth_time > now) throw new AccessError("Недействительный токен входа.");
-  const certificate = await getFirebaseCertificate(header.kid);
-  const publicKey = await crypto.subtle.importKey("spki", pemToBytes(certificate), { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
+  const jwk = await getFirebaseJwk(header.kid);
+  const publicKey = await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
   const valid = await crypto.subtle.verify({ name: "RSASSA-PKCS1-v1_5" }, publicKey, base64UrlToBytes(encodedSignature), textEncoder.encode(`${encodedHeader}.${encodedPayload}`));
   if (!valid) throw new AccessError("Недействительный токен входа.");
   return claims;
 }
 
-async function getFirebaseCertificate(kid) {
-  if (Date.now() >= firebaseCerts.expiresAt || !firebaseCerts.keys[kid]) {
-    const response = await fetch(FIREBASE_CERTS_URL);
+async function getFirebaseJwk(kid) {
+  if (Date.now() >= firebaseJwks.expiresAt || !firebaseJwks.keys[kid]) {
+    const response = await fetch(FIREBASE_JWKS_URL);
     if (!response.ok) throw new AccessError("Не удалось проверить вход.");
     const maxAge = Number((response.headers.get("Cache-Control") || "").match(/max-age=(\d+)/)?.[1] || 300);
-    firebaseCerts = { keys: await response.json(), expiresAt: Date.now() + maxAge * 1000 };
+    const payload = await response.json();
+    const keys = Object.fromEntries((payload.keys || []).filter(key => typeof key.kid === "string").map(key => [key.kid, key]));
+    firebaseJwks = { keys, expiresAt: Date.now() + maxAge * 1000 };
   }
-  if (!firebaseCerts.keys[kid]) throw new AccessError("Недействительный токен входа.");
-  return firebaseCerts.keys[kid];
+  if (!firebaseJwks.keys[kid]) throw new AccessError("Недействительный токен входа.");
+  return firebaseJwks.keys[kid];
 }
 
 function decodeJwtPart(value) {
@@ -82,10 +84,6 @@ function decodeJwtPart(value) {
 function base64UrlToBytes(value) {
   const normalized = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
   return Uint8Array.from(atob(normalized), character => character.charCodeAt(0));
-}
-
-function pemToBytes(pem) {
-  return base64UrlToBytes(pem.replace(/-----BEGIN CERTIFICATE-----|-----END CERTIFICATE-----|\s/g, "").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""));
 }
 
 function json(body, status = 200) {
