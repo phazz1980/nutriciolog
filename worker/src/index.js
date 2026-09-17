@@ -9,6 +9,9 @@ const cors = {
 export default {
   async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response(null, { headers: cors });
+    if (request.method === "GET" && new URL(request.url).pathname === "/api/health") {
+      return json({ status: "ok", version: "0.1.11", provider: env.AI_PROVIDER || null, model: env.BLACKROUTE_MODEL || null, apiKeyConfigured: Boolean(env.BLACKROUTE_API_KEY) });
+    }
     if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
     try {
       await verifyFirebaseToken(request.headers.get("Authorization"));
@@ -25,6 +28,7 @@ export default {
     } catch (error) {
       if (error instanceof AccessError) return json({ error: error.message }, 401);
       if (error instanceof Error && error.message === "Blackroute provider is missing its Worker secret") return json({ error: "В Worker не найден секрет Blackroute API. Добавьте BLACKROUTE_API_KEY как Secret и сохраните настройки." }, 500);
+      if (error instanceof Error && error.message === "Blackroute network request failed") return json({ error: "Worker не смог подключиться к API Blackroute." }, 502);
       if (error instanceof SyntaxError) return json({ error: "ИИ вернул ответ в неподходящем формате. Повторите запрос." }, 502);
       if (error instanceof Error && error.message.startsWith("Blackroute request failed")) {
         const status = error.message.match(/\((\d{3})/)?.[1];

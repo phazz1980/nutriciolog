@@ -5,20 +5,25 @@ export function createBlackrouteProvider(apiKey, model = "deepseek-v3.2-maas") {
   return {
     supportsVision: false,
     async advise(message) {
-      const response = await fetch("https://blackroute.ironborn.cc/v1/chat/completions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: "system", content: instructions },
-            { role: "user", content: message },
-          ],
-          temperature: 0.3,
-          max_tokens: 300,
-          response_format: { type: "json_object" },
-        }),
-      });
+      let response;
+      try {
+        response = await fetch("https://blackroute.ironborn.cc/v1/chat/completions", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: "system", content: instructions },
+              { role: "user", content: message },
+            ],
+            temperature: 0.3,
+            max_tokens: 300,
+            response_format: { type: "json_object" },
+          }),
+        });
+      } catch {
+        throw new Error("Blackroute network request failed");
+      }
       if (!response.ok) {
         let code = "";
         try {
