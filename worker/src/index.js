@@ -6,6 +6,8 @@ const cors = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
+const MODEL_SELECTOR_EMAIL = "340052@gmail.com";
+
 export default {
   async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response(null, { headers: cors });
@@ -14,14 +16,15 @@ export default {
     }
     if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
     try {
-      await verifyFirebaseToken(request.headers.get("Authorization"));
+      const claims = await verifyFirebaseToken(request.headers.get("Authorization"));
       const { message, image = null, model = null } = await request.json();
       if (typeof message !== "string" || !message.trim() || message.length > 1000) {
         return json({ error: "Введите вопрос до 1000 символов." }, 400);
       }
       if (model !== null && typeof model !== "string") return json({ error: "Недопустимая модель." }, 400);
       if (image && (!/^image\/(jpeg|png|webp)$/.test(image.mimeType || "") || typeof image.dataUrl !== "string" || image.dataUrl.length > 5_600_000)) return json({ error: "Недопустимое фото. Используйте JPEG, PNG или WebP до 4 МБ." }, 400);
-      const provider = getProvider(env, model);
+      const requestedModel = claims.email?.toLowerCase() === MODEL_SELECTOR_EMAIL ? model : null;
+      const provider = getProvider(env, requestedModel);
       if (image && !provider.supportsVision) return json({ advice: "Этот ИИ пока не умеет анализировать фото. Опишите, пожалуйста, блюдо и примерную порцию текстом.", proposedMeal: null, proposedProducts: [] });
       const result = await provider.advise(message.trim(), image);
       return json(result);
