@@ -2,6 +2,10 @@
 
 Это статический PWA, опубликованный через Cloudflare Pages. ИИ-консультация выполняется Cloudflare Worker: ключ провайдера остаётся в секрете Worker и никогда не загружается в браузер.
 
+## Публикация в Yandex Object Storage
+
+Workflow `.github/workflows/deploy-yandex.yml` автоматически публикует статические файлы в бакет `nutriciolog-x20` при push в `main`. Учётные данные находятся в GitHub Actions secrets `YC_ACCESS_KEY_ID` и `YC_SECRET_ACCESS_KEY`. Адрес сайта: https://nutriciolog-x20.website.yandexcloud.net/. Worker публикуется отдельно.
+
 ## Cloudflare Pages
 
 1. Создайте GitHub-репозиторий и загрузите в его корень `index.html`, `README.md` и папку `worker`.
