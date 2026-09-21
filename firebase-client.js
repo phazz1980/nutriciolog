@@ -105,10 +105,12 @@ async function saveProduct(product) {
   const title = String(product?.title || "").trim();
   const normalizedName = normalizeProductName(title);
   if (!normalizedName || !Number.isFinite(Number(product?.calories))) throw new Error("Некорректный продукт");
+  const unitWeight = Number(product.unitWeight);
   return save("products", normalizedName, {
     title,
     normalizedName,
     portion: Number(product.portion) || null,
+    ...(Number.isFinite(unitWeight) && unitWeight > 0 ? { unitWeight } : {}),
     calories: Number(product.calories),
     protein: Number(product.protein) || 0,
     fat: Number(product.fat) || 0,
