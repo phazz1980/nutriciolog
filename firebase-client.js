@@ -133,6 +133,21 @@ async function loadDiaryEntries(date) {
   return snapshot.docs.map(document => ({ ...document.data(), id: document.id }));
 }
 
+async function loadWeightEntries() {
+  if (!configured || !user || !db) {
+    const prefix = key("weightEntries");
+    return Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index)).filter(storageKey => storageKey?.startsWith(prefix)).flatMap(storageKey => {
+      try {
+        const entry = JSON.parse(localStorage.getItem(storageKey));
+        return entry?.date && Number.isFinite(Number(entry.weight)) ? [entry] : [];
+      } catch { return []; }
+    });
+  }
+  const { collection, getDocs } = window.__firestore;
+  const snapshot = await getDocs(collection(db, "users", user.uid, "weightEntries"));
+  return snapshot.docs.map(document => document.data()).filter(entry => entry?.date && Number.isFinite(Number(entry.weight)));
+}
+
 window.nutritionStore = {
   saveProfile: profile => save("profile", "main", profile),
   loadProfile,
@@ -155,6 +170,7 @@ window.nutritionStore = {
     return { mode: "cloud" };
   },
   loadDiaryEntries,
+  loadWeightEntries,
   loadProduct,
   saveProduct,
 };
