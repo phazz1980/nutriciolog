@@ -106,6 +106,9 @@ async function saveProduct(product) {
   const normalizedName = normalizeProductName(title);
   if (!normalizedName || !Number.isFinite(Number(product?.calories))) throw new Error("Некорректный продукт");
   const unitWeight = Number(product.unitWeight);
+  const clarification = product?.aiClarification;
+  const clarificationQuestion = String(clarification?.question || "").trim().slice(0, 500);
+  const additionalIngredients = String(clarification?.additionalIngredients || "").trim().slice(0, 500);
   return save("products", normalizedName, {
     title,
     normalizedName,
@@ -115,6 +118,7 @@ async function saveProduct(product) {
     protein: Number(product.protein) || 0,
     fat: Number(product.fat) || 0,
     carbs: Number(product.carbs) || 0,
+    ...(clarificationQuestion && additionalIngredients ? { aiClarification: { question: clarificationQuestion, additionalIngredients } } : {}),
   });
 }
 
