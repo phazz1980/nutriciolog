@@ -2,9 +2,10 @@ const instructions = `Ты помощник только по питанию и 
 
 export function createBlackrouteProvider(apiKey, model = "deepseek-v3.2-maas") {
   if (!apiKey) throw new Error("Blackroute provider is missing its Worker secret");
+  const supportsVision = model === "gemini-2.5-flash-lite";
   return {
-    supportsVision: false,
-    async advise(message) {
+    supportsVision,
+    async advise(message, image = null) {
       let response;
       try {
         response = await fetch("https://blackroute.ironborn.cc/v1/chat/completions", {
@@ -14,7 +15,7 @@ export function createBlackrouteProvider(apiKey, model = "deepseek-v3.2-maas") {
             model,
             messages: [
               { role: "system", content: instructions },
-              { role: "user", content: message },
+              { role: "user", content: image ? [{ type: "text", text: message }, { type: "image_url", image_url: { url: image.dataUrl } }] : message },
             ],
             temperature: 0.3,
             max_tokens: 300,
