@@ -122,6 +122,18 @@ async function saveProduct(product) {
   });
 }
 
+async function loadWaterLog(date) {
+  const safeDate = String(date || "");
+  if (!safeDate) return null;
+  if (!configured || !user || !db) {
+    const saved = localStorage.getItem(key(`waterLogs:${safeDate}`));
+    try { return saved ? JSON.parse(saved) : null; } catch { return null; }
+  }
+  const { doc, getDoc } = window.__firestore;
+  const snapshot = await getDoc(doc(db, "users", user.uid, "waterLogs", safeDate));
+  return snapshot.exists() ? snapshot.data() : null;
+}
+
 async function loadDiaryEntries(date) {
   if (!configured || !user || !db) {
     const prefix = key("foodDiary");
@@ -158,6 +170,7 @@ window.nutritionStore = {
   getAccountProfileDefaults: () => ({ name: user?.displayName || "", email: user?.email || "", photoUrl: user?.photoURL || "" }),
   saveDayPlan: plan => save("dayPlans", plan.date, plan),
   saveWaterLog: log => save("waterLogs", log.date, log),
+  loadWaterLog,
   saveWeightEntry: entry => save("weightEntries", entry.date, entry),
   saveDiaryEntry: entry => {
     const id = entry.id || crypto.randomUUID();
