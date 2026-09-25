@@ -33,7 +33,7 @@
 - Предложение ИИ сохраняется только после явного подтверждения пользователя.
 - Фото отправляется только в рамках запроса и не сохраняется в Firebase.
 - Worker использует Blackroute с моделью `gemini-2.5-flash-lite`; секрет `BLACKROUTE_API_KEY` хранится только в Cloudflare Worker Secrets.
-- Ограниченный CORS Worker: `https://nutriciolog.pages.dev`.
+- Ограниченный CORS Worker: `https://nutriciolog.pages.dev` и `https://nutriciolog-x20.website.yandexcloud.net`.
 - Публичные документы OAuth: `privacy.html` и `terms.html`.
 - Логотип `icons/nutritionist-logo.png` добавлен в оболочку и кэш Service Worker `v7`.
 
@@ -61,4 +61,4 @@
 
 ## Следующий шаг
 
-Проверить обновлённую оболочку и настоящий Google-вход на физическом iPhone, затем отдельно исправить права Yandex Object Storage. При изменении версии одновременно обновлять `APP_VERSION`, дату релиза и кэш Service Worker.
+Задеплоить Worker с CORS для Yandex-домена и проверить ИИ в опубликованном Yandex-сайте. Для GitHub Actions `AccessDenied` отдельно проверить права сервисного аккаунта, ключи и политику бакета. При изменении версии одновременно обновлять `APP_VERSION`, дату релиза и кэш Service Worker.

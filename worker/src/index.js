@@ -1,45 +1,54 @@
 import { getProvider } from "./providers/index.js";
 
-const cors = {
-  "Access-Control-Allow-Origin": "https://nutriciolog.pages.dev",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
-};
+const ALLOWED_ORIGINS = new Set([
+  "https://nutriciolog.pages.dev",
+  "https://nutriciolog-x20.website.yandexcloud.net",
+]);
+
+function corsHeaders(request) {
+  const origin = request.headers.get("Origin");
+  return {
+    "Access-Control-Allow-Origin": ALLOWED_ORIGINS.has(origin) ? origin : "https://nutriciolog.pages.dev",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Vary": "Origin",
+  };
+}
 
 const MODEL_SELECTOR_EMAIL = "340052@gmail.com";
 
 export default {
   async fetch(request, env) {
-    if (request.method === "OPTIONS") return new Response(null, { headers: cors });
+    if (request.method === "OPTIONS") return new Response(null, { headers: corsHeaders(request) });
     if (request.method === "GET" && new URL(request.url).pathname === "/api/health") {
-      return json({ status: "ok", version: "0.1.14", provider: env.AI_PROVIDER || null, model: env.BLACKROUTE_MODEL || null, apiKeyConfigured: Boolean(env.BLACKROUTE_API_KEY) });
+      return json({ status: "ok", version: "0.1.15", provider: env.AI_PROVIDER || null, model: env.BLACKROUTE_MODEL || null, apiKeyConfigured: Boolean(env.BLACKROUTE_API_KEY) }, 200, request);
     }
-    if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
+    if (request.method !== "POST") return json({ error: "Method not allowed" }, 405, request);
     try {
       const claims = await verifyFirebaseToken(request.headers.get("Authorization"));
       const { message, image = null, model = null } = await request.json();
       if (typeof message !== "string" || !message.trim() || message.length > 1000) {
-        return json({ error: "Введите вопрос до 1000 символов." }, 400);
+        return json({ error: "Введите вопрос до 1000 символов." }, 400, request);
       }
-      if (model !== null && typeof model !== "string") return json({ error: "Недопустимая модель." }, 400);
-      if (image && (!/^image\/(jpeg|png|webp)$/.test(image.mimeType || "") || typeof image.dataUrl !== "string" || image.dataUrl.length > 5_600_000)) return json({ error: "Недопустимое фото. Используйте JPEG, PNG или WebP до 4 МБ." }, 400);
+      if (model !== null && typeof model !== "string") return json({ error: "Недопустимая модель." }, 400, request);
+      if (image && (!/^image\/(jpeg|png|webp)$/.test(image.mimeType || "") || typeof image.dataUrl !== "string" || image.dataUrl.length > 5_600_000)) return json({ error: "Недопустимое фото. Используйте JPEG, PNG или WebP до 4 МБ." }, 400, request);
       const requestedModel = claims.email?.toLowerCase() === MODEL_SELECTOR_EMAIL ? model : null;
       const provider = getProvider(env, requestedModel);
-      if (image && !provider.supportsVision) return json({ advice: "Этот ИИ пока не умеет анализировать фото. Опишите, пожалуйста, блюдо и примерную порцию текстом.", proposedMeal: null, proposedProducts: [] });
+      if (image && !provider.supportsVision) return json({ advice: "Этот ИИ пока не умеет анализировать фото. Опишите, пожалуйста, блюдо и примерную порцию текстом.", proposedMeal: null, proposedProducts: [] }, 200, request);
       const result = await provider.advise(message.trim(), image);
-      return json(result);
+      return json(result, 200, request);
     } catch (error) {
-      if (error instanceof AccessError) return json({ error: error.message }, 401);
-      if (error instanceof Error && error.message === "Blackroute provider is missing its Worker secret") return json({ error: "В Worker не найден секрет Blackroute API. Добавьте BLACKROUTE_API_KEY как Secret и сохраните настройки." }, 500);
-      if (error instanceof Error && error.message === "Blackroute network request failed") return json({ error: "Worker не смог подключиться к API Blackroute." }, 502);
-      if (error instanceof SyntaxError) return json({ error: "ИИ вернул ответ в неподходящем формате. Повторите запрос." }, 502);
+      if (error instanceof AccessError) return json({ error: error.message }, 401, request);
+      if (error instanceof Error && error.message === "Blackroute provider is missing its Worker secret") return json({ error: "В Worker не найден секрет Blackroute API. Добавьте BLACKROUTE_API_KEY как Secret и сохраните настройки." }, 500, request);
+      if (error instanceof Error && error.message === "Blackroute network request failed") return json({ error: "Worker не смог подключиться к API Blackroute." }, 502, request);
+      if (error instanceof SyntaxError) return json({ error: "ИИ вернул ответ в неподходящем формате. Повторите запрос." }, 502, request);
       if (error instanceof Error && error.message.startsWith("Blackroute request failed")) {
         const status = error.message.match(/\((\d{3})/)?.[1];
         const message = status === "401" ? "Blackroute не принял ключ API. Проверьте секрет Worker." : status === "404" ? "Выбранная модель недоступна в Blackroute." : status === "429" ? "Лимит Blackroute исчерпан. Попробуйте позже." : "Blackroute временно не принял запрос. Попробуйте другую модель.";
-        return json({ error: message }, 502);
+        return json({ error: message }, 502, request);
       }
-      if (error instanceof Error && error.message.startsWith("Blackroute returned")) return json({ error: "Blackroute вернул неполный ответ. Повторите запрос или выберите другую модель." }, 502);
-      return json({ error: "Некорректный запрос." }, 400);
+      if (error instanceof Error && error.message.startsWith("Blackroute returned")) return json({ error: "Blackroute вернул неполный ответ. Повторите запрос или выберите другую модель." }, 502, request);
+      return json({ error: "Некорректный запрос." }, 400, request);
     }
   },
 };
@@ -89,6 +98,6 @@ function base64UrlToBytes(value) {
   return Uint8Array.from(atob(normalized), character => character.charCodeAt(0));
 }
 
-function json(body, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json; charset=utf-8" } });
+function json(body, status = 200, request) {
+  return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders(request), "Content-Type": "application/json; charset=utf-8" } });
 }

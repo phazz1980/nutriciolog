@@ -18,7 +18,7 @@ Workflow `.github/workflows/deploy-yandex.yml` автоматически пуб
 
 1. Создайте Worker в Cloudflare и загрузите содержимое папки `worker` (или выполните публикацию через Wrangler у себя).
 2. В настройках Worker добавьте секрет с именем `BLACKROUTE_API_KEY`. Его значением служит ключ Blackroute. Не добавляйте его в `index.html`, `wrangler.toml`, GitHub или сообщения.
-3. В `worker/src/index.js` указан origin сайта `https://nutriciolog.pages.dev`, поэтому Worker принимает запросы только с этого домена.
+3. В `worker/src/index.js` явно разрешены origins `https://nutriciolog.pages.dev` и `https://nutriciolog-x20.website.yandexcloud.net`. Для других origins Worker не выдаёт разрешение CORS.
 4. Worker опубликован по адресу `https://my-nutritionist-advice.340052.workers.dev/api/advice`; это значение уже задано в `index.html`.
 5. ИИ доступен любому пользователю, вошедшему через Firebase Authentication. При необходимости ограничение по email можно вернуть отдельной доработкой.
 
