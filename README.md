@@ -6,6 +6,8 @@
 
 Workflow `.github/workflows/deploy-yandex.yml` автоматически публикует статические файлы в бакет `nutriciolog-x20` при push в `main`. Учётные данные находятся в GitHub Actions secrets `YC_ACCESS_KEY_ID` и `YC_SECRET_ACCESS_KEY`. Адрес сайта: https://nutriciolog-x20.website.yandexcloud.net/. Worker публикуется отдельно.
 
+При публикации v0.2.3 (25 сентября 2026) Yandex возвращает `AccessDenied` на `PutObject`: подготовка файлов исправлена, но нужно проверить права сервисного аккаунта, ключи и политику бакета. Основной сайт Cloudflare Pages обновлён успешно.
+
 ## Cloudflare Pages
 
 1. Создайте GitHub-репозиторий и загрузите в его корень `index.html`, `README.md` и папку `worker`.
