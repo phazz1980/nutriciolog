@@ -1,4 +1,4 @@
-const CACHE = "my-nutritionist-shell-v5";
+const CACHE = "my-nutritionist-shell-v6";
 const SHELL = ["./", "./index.html", "./firebase-client.js", "./pwa.js", "./photo-picker.js", "./manifest.webmanifest", "./icons/app-icon.svg"];
 const SHELL_URLS = new Set(SHELL.map(path => new URL(path, self.registration.scope).href));
 

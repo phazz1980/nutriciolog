@@ -26,6 +26,20 @@
     .field input,.field select{min-width:0;max-width:100%;font-size:16px}
     .sheet{max-height:100%;overflow-y:auto;overscroll-behavior-y:contain;overflow-wrap:anywhere;padding-bottom:calc(22px + env(safe-area-inset-bottom,0px))}
     .modal{bottom:auto;top:var(--form-viewport-top,0px);height:100vh;height:var(--form-viewport-height,100dvh)}
+    #authRequiredDialog{z-index:12;padding:20px 16px calc(16px + env(safe-area-inset-bottom,0px));background:#18332b66;backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
+    #authRequiredDialog .auth-sheet{width:min(100%,398px);padding:28px 24px 20px;border-radius:28px;background:linear-gradient(160deg,var(--mint),#fff 48%);border:1px solid #ffffffb3;box-shadow:0 20px 60px #18332b26;text-align:center}
+    .auth-mark{width:64px;height:64px;margin:0 auto 14px;border-radius:22px;background:#fff;box-shadow:0 4px 16px #207d5b0d;display:grid;place-items:center;font-size:32px}
+    .auth-brand{margin:0 0 8px;font-size:12px;font-weight:600;color:var(--green)}
+    #authRequiredDialog h2{margin:0 0 10px;font-size:24px;line-height:1.2;letter-spacing:-.5px}
+    .auth-description{margin:0;font-size:14px;line-height:1.55;color:#647b70}
+    .auth-status{margin:18px 0 0;padding:12px 14px;border-radius:14px;background:var(--mint);color:#356c55;text-align:left;font-size:13px;line-height:1.5;overflow-wrap:anywhere}
+    .auth-status:empty{display:none}
+    .auth-status[data-error="true"]{background:#fff4e9;color:#8b5b22}
+    #authRequiredDialog .primary{margin-top:22px;min-height:50px;box-shadow:0 5px 14px #2d9b7220}
+    #authRequiredDialog .auth-later{display:block;width:100%;min-height:44px;margin-top:8px;padding:12px;background:none}
+    .auth-note{margin:12px 8px 0;font-size:11px;line-height:1.5;color:var(--muted)}
+    #authRequiredDialog button:focus-visible{outline:3px solid #82cdb0;outline-offset:3px}
+    @media(min-width:700px){#authRequiredDialog{align-items:center}}
   </style>
 </head>
 <body><main class="phone">
@@ -59,7 +73,7 @@ let voiceCancelled=false;window.toggleVoice=function(){if(!Recognition){setVoice
 </script><script>
 function setAiDebug(text){const panel=document.getElementById('aiDebug');if(!panel)return;panel.textContent=`Отладка: ${text}`;panel.style.display='block'}
 window.askAI=async function(e){e.preventDefault();const text=question.value.trim();if(!text)return;const token=await getAiToken();if(token===undefined)return;if(!token){chatStatus.textContent='Войдите через Google в профиле, чтобы воспользоваться ИИ.';show('profile');return}const model=document.getElementById('aiModel')?.value||'deepseek-v3.2-maas';const before=chatlog.children.length;chatlog.insertAdjacentHTML('beforeend','<div class="bubble user"></div>');chatlog.lastElementChild.textContent=text;question.value='';chatStatus.textContent='Формирую ответ…';setAiDebug(`модель ${model}; запрос отправлен`);try{const r=await requestAiAdvice({method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({message:text,image:selectedPhoto,model})});const d=await r.json();if(!r.ok){setAiDebug(`модель ${model}; Worker ответил HTTP ${r.status}`);throw new Error(d.error||'Ошибка сервиса')}setAiDebug(`модель ${model}; Worker ответил успешно`);chatlog.insertAdjacentHTML('beforeend','<div class="bubble"></div>');chatlog.lastElementChild.textContent=d.advice;chatStatus.textContent='Ответ носит справочный характер.';if(d.proposedProducts)await showProductProposals(d.proposedProducts);if(d.proposedMeal)showMealProposal(d.proposedMeal);removePhoto();if(voiceOn&&chatlog.children.length>before&&'speechSynthesis'in window){speechSynthesis.cancel();const utterance=new SpeechSynthesisUtterance(d.advice);utterance.lang='ru-RU';speechSynthesis.speak(utterance)}}catch(err){const status=document.getElementById('aiDebug')?.textContent||'';if(!status.includes('HTTP'))setAiDebug(`модель ${model}; ошибка запроса`);chatStatus.textContent='Не удалось получить ответ: '+err.message}}
-const APP_VERSION='v0.2.3';const RELEASE_DATE='25 сентября 2026';const defaultProfile={name:'Анна',age:27,height:165,weight:65.4,targetWeight:62,goal:'Похудение',calories:1800};let currentProfile={...defaultProfile};let currentAccount={};let profileNameReady=false;let profileNameFallbackTimer;let profileLoadVersion=0;
+const APP_VERSION='v0.2.4';const RELEASE_DATE='25 сентября 2026';const defaultProfile={name:'Анна',age:27,height:165,weight:65.4,targetWeight:62,goal:'Похудение',calories:1800};let currentProfile={...defaultProfile};let currentAccount={};let profileNameReady=false;let profileNameFallbackTimer;let profileLoadVersion=0;
 function formatNumber(value){return Number(value).toLocaleString('ru-RU',{maximumFractionDigits:1})}
 function firstName(name){return String(name||'').trim().split(/\s+/)[0]||''}
 function renderProfile(){document.getElementById('profileName').textContent=profileNameReady?currentProfile.name:'Загружаем профиль…';const avatar=document.getElementById('profileAvatar');avatar.replaceChildren();if(currentAccount.photoUrl){const photo=document.createElement('img');photo.src=currentAccount.photoUrl;photo.alt='Фото профиля Google';photo.referrerPolicy='no-referrer';photo.style.cssText='width:100%;height:100%;object-fit:cover;border-radius:50%';avatar.append(photo)}else avatar.textContent='🌿';document.getElementById('profileSummary').textContent=` · ${currentProfile.age} лет · ${formatNumber(currentProfile.height)} см · ${formatNumber(currentProfile.weight)} кг`;document.getElementById('profileGoal').textContent=currentProfile.goal;document.getElementById('profileRate').textContent=`Цель: ${formatNumber(currentProfile.targetWeight)} кг`;document.getElementById('profileCalories').textContent=`${formatNumber(currentProfile.calories)} ккал`;document.getElementById('releaseInfo').textContent=`Версия ${APP_VERSION} · ${RELEASE_DATE}`}
@@ -111,18 +125,20 @@ const mealForm=document.querySelector('#modal form');if(mealForm&&!document.getE
 window.showAuthRequiredDialog=function(){
   if(document.getElementById('authRequiredDialog'))return;
   const dialog=document.createElement('div');dialog.id='authRequiredDialog';dialog.className='modal show';
-  dialog.innerHTML='<section class="sheet" role="dialog" aria-modal="true" aria-labelledby="authRequiredTitle"><h2 id="authRequiredTitle">Нужна авторизация</h2><p class="hello">Чтобы рассчитать калории и БЖУ с ИИ, войдите через Google.</p><p class="hello" role="status" aria-live="polite"></p><button class="primary" type="button">Перейти к входу</button><button class="link" type="button" style="display:block;margin:14px auto 0">Позже</button></section>';
+  dialog.innerHTML='<section class="sheet auth-sheet" role="dialog" aria-modal="true" aria-labelledby="authRequiredTitle" aria-describedby="authRequiredDescription"><div class="auth-mark" aria-hidden="true">🌿</div><p class="auth-brand">Мой нутрициолог</p><h2 id="authRequiredTitle">Войти в аккаунт</h2><p class="auth-description" id="authRequiredDescription">Сохраняйте свой дневник и получайте<br>подсказки ИИ о питании.</p><p class="auth-status" role="status" aria-live="polite"></p><button class="primary" type="button">Войти через Google</button><button class="link auth-later" type="button">Позже</button><p class="auth-note">Выбор аккаунта откроется в окне Google.<br>Ваш черновик блюда останется на месте.</p></section>';
   const [signIn,cancel]=dialog.querySelectorAll('button'),status=dialog.querySelector('[role="status"]');
-  const refresh=()=>{const state=window.getFirebaseAuthStatus?.();signIn.disabled=Boolean(state?.pending);signIn.textContent=state?.pending?'Ожидаем вход через Google…':'Перейти к входу';if(state?.message)status.textContent=state.message};
-  const close=()=>{window.removeEventListener('nutrition-auth-status',refresh);dialog.remove()};
+  const previousFocus=document.activeElement;
+  const refresh=()=>{const state=window.getFirebaseAuthStatus?.();signIn.disabled=Boolean(state?.pending);signIn.textContent=state?.pending?'Ожидаем вход…':'Войти через Google';dialog.querySelector('.auth-sheet').setAttribute('aria-busy',String(Boolean(state?.pending)));if(state?.message)status.textContent=state.message};
+  const close=()=>{window.removeEventListener('nutrition-auth-status',refresh);dialog.remove();if(previousFocus?.isConnected)previousFocus.focus()};
   signIn.onclick=async()=>{
     const state=window.getFirebaseAuthStatus?.();
     if(!window.firebaseSignInWithGoogle||state?.state!=='ready'){close();show('profile');toast('Дождитесь подключения или повторите его в профиле');return}
-    status.textContent='Загружается окно Google. При слабом интернете это может занять время.';
+    status.dataset.error='false';status.textContent='Загружается окно Google. При слабом интернете это может занять время.';
     try{await window.firebaseSignInWithGoogle();close();toast('Вход выполнен')}
-    catch(error){refresh();status.textContent=window.getAuthErrorMessage?.(error)||'Не удалось войти. Проверьте интернет и повторите попытку.'}
+    catch(error){refresh();status.dataset.error='true';status.textContent=window.getAuthErrorMessage?.(error)||'Не удалось войти. Проверьте интернет и повторите попытку.'}
   };
-  cancel.onclick=close;window.addEventListener('nutrition-auth-status',refresh);document.body.append(dialog);refresh();
+  dialog.onkeydown=event=>{if(event.key==='Escape')close();if(event.key==='Tab'){const buttons=[...dialog.querySelectorAll('button:not(:disabled)')],first=buttons[0],last=buttons.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus()}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus()}}};
+  cancel.onclick=close;window.addEventListener('nutrition-auth-status',refresh);document.body.append(dialog);refresh();(signIn.disabled?cancel:signIn).focus();
 };
 const calculateNutritionWithAuthCheck=window.calculateMealNutrition;window.calculateMealNutrition=async function(){const token=await getAiToken();if(token===undefined)return;if(!token){window.showAuthRequiredDialog();return}return calculateNutritionWithAuthCheck()};document.getElementById('calculateMealButton').onclick=window.calculateMealNutrition;
 const mealNameField=document.getElementById('mealName')?.closest('.field'),portionField=document.getElementById('portion')?.closest('.field');if(mealNameField&&portionField){const nameAndPortionRow=document.createElement('div');nameAndPortionRow.className='row';mealNameField.before(nameAndPortionRow);mealNameField.style.flex='2';nameAndPortionRow.append(mealNameField,portionField);const portionInput=document.getElementById('portion');portionInput.required=true;portionInput.min='1'}

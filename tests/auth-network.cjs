@@ -122,6 +122,10 @@ export const serverTimestamp=()=>0;
 
     await check('Popup is single-flight; a network failure is actionable and retry succeeds', {}, async ({ page }) => {
       await page.waitForFunction(() => window.getFirebaseAuthStatus().state === 'ready');
+      await page.evaluate(() => {openMeal();window.showAuthRequiredDialog()});
+      if(process.env.AUTH_SCREENSHOT)await page.screenshot({path:process.env.AUTH_SCREENSHOT});
+      await page.keyboard.press('Escape');
+      assert.equal(await page.locator('#authRequiredDialog').count(),0);
       await page.evaluate(() => { window.showAuthRequiredDialog(); document.querySelector('#authRequiredDialog .primary').click(); window.firebaseSignInWithGoogle().catch(()=>{}); });
       assert.equal(await page.evaluate(() => window.test.popupCalls), 1);
       assert.equal(await page.locator('#authRequiredDialog .primary').isDisabled(), true);
