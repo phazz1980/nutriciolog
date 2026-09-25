@@ -90,6 +90,81 @@ window.showAuthRequiredDialog=function(){
 const calculateNutritionWithAuthCheck=window.calculateMealNutrition;window.calculateMealNutrition=async function(){const token=await getAiToken();if(token===undefined)return;if(!token){window.showAuthRequiredDialog();return}return calculateNutritionWithAuthCheck()};document.getElementById('calculateMealButton').onclick=window.calculateMealNutrition;
 const mealNameField=document.getElementById('mealName')?.closest('.field'),portionField=document.getElementById('portion')?.closest('.field');if(mealNameField&&portionField){const nameAndPortionRow=document.createElement('div');nameAndPortionRow.className='row';mealNameField.before(nameAndPortionRow);mealNameField.style.flex='2';nameAndPortionRow.append(mealNameField,portionField);const portionInput=document.getElementById('portion');portionInput.required=true;portionInput.min='1'}
 if(portionField){const nameAndPortionRow=portionField.closest('.row');if(nameAndPortionRow)nameAndPortionRow.classList.add('meal-name-portion');mealNameField.style.flex='';portionField.style.flex='';portionField.style.width=''}
+// Создаем контейнер для поля порции, аналогичный контейнеру названия блюда
+const portionInput=document.getElementById('portion');
+if(portionField && portionInput) {
+  // Создаем контейнер для поля порции
+  const portionControl = document.createElement('div');
+  portionControl.className = 'meal-name-control';
+  
+  // Создаем контейнер для действий с порцией
+  const portionActions = document.createElement('span');
+  portionActions.className = 'meal-name-actions';
+  
+  // Создаем метку для поля порции
+  const portionLabel = document.createElement('span');
+  portionLabel.textContent = 'Порция, г';
+  portionField.prepend(portionLabel);
+  
+  // Перемещаем input в контейнер
+  portionInput.parentElement.append(portionControl);
+  portionControl.append(portionInput, portionActions);
+  
+  // Добавляем кнопку для фото порции
+  const portionPhotoButton = document.createElement('button');
+  portionPhotoButton.type = 'button';
+  portionPhotoButton.className = 'secondary meal-name-action meal-photo-action';
+  portionPhotoButton.title = 'Распознать порцию по фото';
+  portionPhotoButton.setAttribute('aria-label', 'Распознать порцию по фото');
+  portionPhotoButton.onclick = () => {
+    const photoInput = document.getElementById('manualMealPhoto');
+    if (photoInput) {
+      // Открываем диалог выбора фото
+      const event = new MouseEvent('click', {
+        view: window,
+        bubbles: true,
+        cancelable: true
+      });
+      photoInput.dispatchEvent(event);
+    }
+  };
+  portionActions.append(portionPhotoButton);
+  
+  // Добавляем кнопку для голосового ввода порции
+  const portionVoiceButton = document.createElement('button');
+  portionVoiceButton.type = 'button';
+  portionVoiceButton.className = 'secondary meal-name-action';
+  portionVoiceButton.textContent = '🎙';
+  portionVoiceButton.title = 'Ввести порцию голосом';
+  portionVoiceButton.setAttribute('aria-label', 'Ввести порцию голосом');
+  portionVoiceButton.onclick = () => {
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+      recognition.lang = 'ru-RU';
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+      
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        // Извлекаем числовое значение из речи
+        const number = transcript.match(/\d+/);
+        if (number) {
+          portionInput.value = number[0];
+          portionInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      };
+      
+      recognition.onerror = (event) => {
+        toast('Ошибка голосового ввода: ' + event.error);
+      };
+      
+      recognition.start();
+    } else {
+      toast('Голосовой ввод не поддерживается в этом браузере');
+    }
+  };
+  portionActions.append(portionVoiceButton);
+}
 const caloriesField=document.getElementById('calories')?.closest('.field'),proteinField=document.getElementById('protein')?.closest('.field'),fatField=document.getElementById('fat')?.closest('.field'),carbsField=document.getElementById('carbs')?.closest('.field');const caloriesRow=caloriesField?.closest('.row'),fatRow=fatField?.closest('.row');if(caloriesRow&&proteinField)caloriesRow.append(proteinField);if(fatRow&&carbsField)fatRow.append(carbsField);
 const portionInput=document.getElementById('portion');if(portionField&&portionInput&&!document.getElementById('portionUnit')){Array.from(portionField.childNodes).filter(node=>node.nodeType===Node.TEXT_NODE).forEach(node=>node.remove());const portionLabel=document.createElement('span');portionLabel.textContent='Порция, г / шт.';portionField.prepend(portionLabel);const portionUnit=document.createElement('input');portionUnit.id='portionUnit';portionUnit.type='hidden';portionUnit.value='г';portionField.append(portionUnit)}
 const calculateNutritionWithUnit=window.calculateMealNutrition;window.calculateMealNutrition=async function(){const title=mealName.value.trim(),amount=Number(portion.value),unit=document.getElementById('portionUnit')?.value||'г';if(!validateMealEstimate())return;const token=await getAiToken();if(token===undefined)return;if(!token){window.showAuthRequiredDialog();return}const button=document.getElementById('calculateMealButton');button.disabled=true;button.textContent='Рассчитываю…';try{const model=document.getElementById('aiModel')?.value||'deepseek-v3.2-maas';const countHint=unit==='шт.'?'Используй типичный вес одной штуки и рассчитай значения для указанного количества.':'';const response=await requestAiAdvice({method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({message:`Оцени пищевую ценность блюда «${title}» для порции ${amount} ${unit}. ${countHint} Верни один продукт с калориями, белками, жирами и углеводами именно для этой порции.`,model})});const data=await response.json();if(!response.ok)throw new Error(data.error||'Ошибка сервиса');const estimate=Array.isArray(data.proposedProducts)?data.proposedProducts[0]:data.proposedMeal;if(!estimate||!Number.isFinite(Number(estimate.calories)))throw new Error('ИИ не вернул расчёт');calories.value=Math.round(Number(estimate.calories));protein.value=Number(estimate.protein||0);fat.value=Number(estimate.fat||0);carbs.value=Number(estimate.carbs||0);toast('Калории и БЖУ заполнены — проверьте их перед сохранением')}catch(error){toast(`Не удалось рассчитать: ${error.message}`)}finally{button.disabled=false;button.textContent='✦ Рассчитать с ИИ'}};document.getElementById('calculateMealButton').onclick=window.calculateMealNutrition;
@@ -199,6 +274,7 @@ window.addEventListener('nutrition-auth-changed',loadWeightProgress);
 renderWeightProgress();
 
 const manualPhotoInput=document.createElement('input');manualPhotoInput.id='manualMealPhoto';manualPhotoInput.type='file';manualPhotoInput.accept='image/jpeg,image/png,image/webp';manualPhotoInput.capture='environment';manualPhotoInput.style.display='none';const manualPhotoButton=document.createElement('button');manualPhotoButton.type='button';manualPhotoButton.className='secondary';manualPhotoButton.title='Распознать блюдо по фото';manualPhotoButton.setAttribute('aria-label','Распознать блюдо по фото');manualPhotoButton.textContent='📷';manualPhotoButton.style.cssText='align-self:center;width:42px;height:42px;padding:0;display:grid;place-items:center;line-height:1';const manualPhotoRow=mealNameField?.parentElement;if(manualPhotoRow&&!document.getElementById('manualMealPhoto')){manualPhotoRow.insertBefore(manualPhotoButton,portionField);document.body.append(manualPhotoInput)}manualPhotoButton.onclick=()=>{const useCamera=window.confirm('Снять новое фото?\n\nОК — камера\nОтмена — выбрать файл');if(useCamera)manualPhotoInput.setAttribute('capture','environment');else manualPhotoInput.removeAttribute('capture');manualPhotoInput.click()};async function recognizeManualMealPhoto(file){if(!file)return;if(file.size>4*1024*1024){toast('Фото должно быть не больше 4 МБ');return}const token=await getAiToken();if(token===undefined)return;if(!token){window.showAuthRequiredDialog();return}manualPhotoButton.disabled=true;manualPhotoButton.textContent='…';try{const dataUrl=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file)}),model=document.getElementById('aiModel')?.value||'gemini-2.5-flash-lite',response=await requestAiAdvice({method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({message:'Распознай блюдо на фотографии. Верни один наиболее заметный продукт или блюдо с ориентировочными калориями, белками, жирами, углеводами и весом порции в граммах. Не сохраняй ничего.',image:{dataUrl,mimeType:file.type},model})}),data=await response.json();if(!response.ok)throw new Error(data.error||'Ошибка сервиса');const estimate=Array.isArray(data.proposedProducts)?data.proposedProducts[0]:data.proposedMeal;if(!estimate?.title||!Number.isFinite(Number(estimate.calories)))throw new Error('ИИ не смог распознать блюдо');mealName.value=estimate.title;portion.value=Math.round(Number(estimate.portion)||0)||'';calories.value=Math.round(Number(estimate.calories));protein.value=Number(estimate.protein||0);fat.value=Number(estimate.fat||0);carbs.value=Number(estimate.carbs||0);toast('Данные заполнены по фото — проверьте их перед сохранением')}catch(error){toast(`Не удалось распознать фото: ${error.message}`)}finally{manualPhotoInput.value='';manualPhotoButton.textContent='📷';manualPhotoButton.disabled=false}}manualPhotoInput.addEventListener('change',()=>recognizeManualMealPhoto(manualPhotoInput.files?.[0]));
+manualPhotoInput.onchange=()=>{if(manualPhotoInput.files?.[0]){recognizeManualMealPhoto(manualPhotoInput.files[0]);handleMealPhoto(manualPhotoInput.files[0])}};
 
 let aiServiceError='',aiTokenError='',aiRequests=0;
 function renderAiAvailability(){
@@ -242,6 +318,56 @@ renderAiAvailability();
 
 const mealFormLayout=document.querySelector('#modal form');
 const mealCaloriesField=document.getElementById('calories')?.closest('.field');
+// Добавляем обработчик для фото порции
+window.handleMealPhoto = async (file) => {
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const dataUrl = e.target.result;
+    
+    // Отправляем фото в ИИ для распознавания порции
+    const token = await getAiToken();
+    if (token === undefined) return;
+    if (!token) {
+      window.showAuthRequiredDialog();
+      return;
+    }
+    
+    try {
+      const response = await requestAiAdvice({
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token
+        },
+        body: JSON.stringify({
+          message: "Определи порцию продукта на фото в граммах. Верни только число без единиц измерения.",
+          image: {
+            dataUrl: dataUrl,
+            mimeType: file.type
+          }
+        })
+      });
+      
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Ошибка сервиса');
+      
+      // Извлекаем число из ответа ИИ
+      const number = data.advice.match(/\d+/);
+      if (number) {
+        portionInput.value = number[0];
+        portionInput.dispatchEvent(new Event('input', { bubbles: true }));
+        toast('Порция распознана');
+      } else {
+        toast('Не удалось распознать порцию');
+      }
+    } catch (error) {
+      toast(`Ошибка распознавания: ${error.message}`);
+    }
+  };
+  reader.readAsDataURL(file);
+};
 const mealProteinField=document.getElementById('protein')?.closest('.field');
 const mealFatField=document.getElementById('fat')?.closest('.field');
 const mealCarbsField=document.getElementById('carbs')?.closest('.field');
