@@ -35,7 +35,8 @@
 - Worker настроен на Blackroute с моделью `gemini-3.6-flash`, в том числе для анализа фото; секрет `BLACKROUTE_API_KEY` хранится только в Cloudflare Worker Secrets.
 - Ограниченный CORS Worker: `https://nutriciolog.pages.dev` и `https://nutriciolog-x20.website.yandexcloud.net`.
 - Публичные документы OAuth: `privacy.html` и `terms.html`.
-- Логотип `icons/nutritionist-logo.png` добавлен в оболочку и кэш Service Worker `v7`.
+- Удалён переключатель моделей в интерфейсе вкладки «Совет» (приложение использует модель по умолчанию на стороне Worker).
+- Логотип `icons/nutritionist-logo.png` добавлен в оболочку и кэш Service Worker `v9`.
 
 ## Текущие внешние настройки
 
