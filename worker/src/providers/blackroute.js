@@ -2,7 +2,7 @@ const instructions = `Ты помощник только по питанию и 
 
 export function createBlackrouteProvider(apiKey, model = "deepseek-v3.2-maas") {
   if (!apiKey) throw new Error("Blackroute provider is missing its Worker secret");
-  const supportsVision = model === "gemini-2.5-flash-lite";
+  const supportsVision = new Set(["gemini-2.5-flash-lite", "gemini-3.6-flash"]).has(model);
   return {
     supportsVision,
     async advise(message, image = null) {

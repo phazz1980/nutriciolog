@@ -6,6 +6,7 @@ import { createBlackrouteProvider } from "./blackroute.js";
 const blackrouteModels = new Set([
   "deepseek-v3.2-maas",
   "gemini-2.5-flash-lite",
+  "gemini-3.6-flash",
   "gemini-3.5-flash-lite",
   "grok-4.20-non-reasoning",
   "gpt-oss-120b-maas",

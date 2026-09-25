@@ -4,6 +4,6 @@ compatibility_date = "2026-09-15"
 
 [vars]
 AI_PROVIDER = "blackroute"
-BLACKROUTE_MODEL = "gemini-2.5-flash-lite"
+BLACKROUTE_MODEL = "gemini-3.6-flash"
 
 # Never put BLACKROUTE_API_KEY here or in Git. Add it as a Cloudflare Worker secret.

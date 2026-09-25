@@ -32,7 +32,7 @@
 - ИИ-расчёт БЖУ, распознавание фото, голосовой ввод и предложения продуктов.
 - Предложение ИИ сохраняется только после явного подтверждения пользователя.
 - Фото отправляется только в рамках запроса и не сохраняется в Firebase.
-- Worker использует Blackroute с моделью `gemini-2.5-flash-lite`; секрет `BLACKROUTE_API_KEY` хранится только в Cloudflare Worker Secrets.
+- Worker настроен на Blackroute с моделью `gemini-3.6-flash`, в том числе для анализа фото; секрет `BLACKROUTE_API_KEY` хранится только в Cloudflare Worker Secrets.
 - Ограниченный CORS Worker: `https://nutriciolog.pages.dev` и `https://nutriciolog-x20.website.yandexcloud.net`.
 - Публичные документы OAuth: `privacy.html` и `terms.html`.
 - Логотип `icons/nutritionist-logo.png` добавлен в оболочку и кэш Service Worker `v7`.
