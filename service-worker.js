@@ -1,5 +1,5 @@
-const CACHE = "my-nutritionist-shell-v6";
-const SHELL = ["./", "./index.html", "./firebase-client.js", "./pwa.js", "./photo-picker.js", "./manifest.webmanifest", "./icons/app-icon.svg"];
+const CACHE = "my-nutritionist-shell-v7";
+const SHELL = ["./", "./index.html", "./styles.css", "./app.js", "./firebase-client.js", "./pwa.js", "./photo-picker.js", "./manifest.webmanifest", "./icons/app-icon.svg", "./icons/nutritionist-logo.png"];
 const SHELL_URLS = new Set(SHELL.map(path => new URL(path, self.registration.scope).href));
 
 self.addEventListener("install", event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting())));
