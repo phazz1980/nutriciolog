@@ -7,6 +7,7 @@ async function getAiToken(){
     const token=await window.getFirebaseIdToken();window.setAiTokenError?.('');return token;
   }catch(error){const message=window.getAuthErrorMessage?.(error)||'Не удалось проверить вход. Проверьте соединение и повторите действие.';window.setAiTokenError?.(message);toast(message);return undefined}
 }
+
 window.askAI=async function(e){e.preventDefault();const text=question.value.trim();chatlog.insertAdjacentHTML('beforeend','<div class="bubble user"></div>');chatlog.lastElementChild.textContent=text;question.value='';if(AI_ENDPOINT.includes('YOUR-WORKER')){chatlog.insertAdjacentHTML('beforeend','<div class="bubble">Сервер советов пока не подключён.</div>');return}chatStatus.textContent='Формирую ответ…';try{const r=await requestAiAdvice({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка сервиса');chatlog.insertAdjacentHTML('beforeend','<div class="bubble"></div>');chatlog.lastElementChild.textContent=d.advice;chatStatus.textContent='Ответ носит справочный характер.';if(d.proposedMeal)showMealProposal(d.proposedMeal)}catch(err){chatStatus.textContent='Не удалось получить ответ: '+err.message}}
 function showMealProposal(meal){const modal=document.createElement('div');modal.className='modal show';modal.innerHTML=`<section class="sheet"><h2>Добавить в дневник?</h2><p class="hello">ИИ предлагает: <b>${meal.title}</b> · ${meal.calories} ккал · ${meal.mealType||'Перекус'}</p><label class="field">Когда добавить<select><option value="today">Сегодня</option><option value="tomorrow">Завтра</option></select></label><p class="notice">Проверьте предложение перед сохранением. Блюдо не будет добавлено без вашего подтверждения.</p><button class="primary">Добавить</button><button class="link" style="display:block;margin:14px auto 0">Отмена</button></section>`;const [dateSelect,confirm,cancel]=modal.querySelectorAll('select,button');confirm.onclick=async()=>{try{const entry={...meal,date:dateKeyFor(dateSelect.value),mealType:meal.mealType||'Перекус',source:'ai-confirmed'};await window.addProposedMeal(entry);addDiaryEntryToView(entry);modal.remove();toast(`Блюдо добавлено на ${dateSelect.value==='today'?'сегодня':'завтра'}`)}catch{toast('Не удалось сохранить блюдо')}};cancel.onclick=()=>modal.remove();document.body.append(modal)}
 async function showProductProposals(products){const list=Array.isArray(products)?products.slice(0,8):[];for(const proposal of list){if(!proposal||!proposal.title||!Number.isFinite(Number(proposal.calories)))continue;let product={...proposal};try{const saved=await window.nutritionStore?.loadProduct?.(proposal.title);if(saved)product={...product,...saved,mealType:proposal.mealType||'Перекус'}}catch{}const basePortion=Number(product.portion);const card=document.createElement('section');card.className='card';const title=document.createElement('h2');title.textContent=product.title;const details=document.createElement('p');details.className='hello';const weightLabel=document.createElement('label');weightLabel.className='field';weightLabel.textContent='Вес порции, г';const weightInput=document.createElement('input');weightInput.type='number';weightInput.min='1';weightInput.step='1';weightInput.inputMode='numeric';weightInput.value=Number.isFinite(basePortion)&&basePortion>0?basePortion:'';weightInput.placeholder='Например, 250';weightLabel.append(weightInput);const scaledProduct=()=>{const weight=Number(weightInput.value);if(!Number.isFinite(weight)||weight<=0)return null;const ratio=basePortion>0?weight/basePortion:1;return {...product,portion:weight,calories:Math.round(Number(product.calories)*ratio),protein:Number((Number(product.protein||0)*ratio).toFixed(1)),fat:Number((Number(product.fat||0)*ratio).toFixed(1)),carbs:Number((Number(product.carbs||0)*ratio).toFixed(1))}};const renderDetails=()=>{const entry=scaledProduct()||product;details.textContent=`${entry.portion||'—'} г · ${entry.calories} ккал · Б ${entry.protein||0} г · Ж ${entry.fat||0} г · У ${entry.carbs||0} г`};renderDetails();weightInput.oninput=renderDetails;const label=document.createElement('label');label.className='field';label.textContent='Приём пищи';const select=document.createElement('select');['Завтрак','Обед','Ужин','Перекус'].forEach(type=>{const option=document.createElement('option');option.value=type;option.textContent=type;option.selected=type===(product.mealType||'Перекус');select.append(option)});label.append(select);const dateLabel=document.createElement('label');dateLabel.className='field';dateLabel.textContent='Когда добавить';const dateSelect=document.createElement('select');[['today','Сегодня'],['tomorrow','Завтра']].forEach(([value,text])=>dateSelect.add(new Option(text,value)));dateLabel.append(dateSelect);const button=document.createElement('button');button.className='primary';button.type='button';button.textContent='Добавить';button.onclick=async()=>{const entry=scaledProduct();if(!entry){weightInput.focus();toast('Укажите вес порции в граммах');return}button.disabled=true;try{await window.addProposedProduct({...entry,mealType:select.value,date:dateKeyFor(dateSelect.value),source:'ai-product-confirmed'});addDiaryEntryToView({...entry,mealType:select.value,date:dateKeyFor(dateSelect.value)});card.remove();toast(`Продукт добавлен на ${dateSelect.value==='today'?'сегодня':'завтра'} и в личную базу`)}catch{button.disabled=false;toast('Не удалось сохранить продукт')}};card.append(title,details,weightLabel,label,dateLabel,button);chatlog.append(card)}}
@@ -238,3 +239,78 @@ window.addEventListener('nutrition-auth-changed',()=>{aiTokenError='';aiServiceE
 window.addEventListener('offline',renderAiAvailability);
 window.addEventListener('online',()=>{aiTokenError='';renderAiAvailability()});
 renderAiAvailability();
+
+const mealFormLayout=document.querySelector('#modal form');
+const mealCaloriesField=document.getElementById('calories')?.closest('.field');
+const mealProteinField=document.getElementById('protein')?.closest('.field');
+const mealFatField=document.getElementById('fat')?.closest('.field');
+const mealCarbsField=document.getElementById('carbs')?.closest('.field');
+if(mealFormLayout&&mealNameField&&portionField&&mealCaloriesField&&mealProteinField&&mealFatField&&mealCarbsField){
+  const oldRows=[...new Set([mealNameField,portionField,mealCaloriesField,mealProteinField,mealFatField,mealCarbsField].map(field=>field.closest('.row')).filter(Boolean))];
+  oldRows.forEach(row=>row.remove());
+  const layoutAnchor=document.getElementById('nutritionPrecisionHint')||document.getElementById('calculateMealButton')||mealFormLayout.querySelector('.primary');
+  const mealDataRow=document.createElement('div');
+  mealDataRow.className='row meal-data-row';
+  mealDataRow.append(portionField,mealCaloriesField);
+  const mealMacrosRow=document.createElement('div');
+  mealMacrosRow.className='row meal-macros-row';
+  mealMacrosRow.append(mealProteinField,mealFatField,mealCarbsField);
+  mealFormLayout.insertBefore(mealNameField,layoutAnchor);
+  mealFormLayout.insertBefore(mealDataRow,layoutAnchor);
+  mealFormLayout.insertBefore(mealMacrosRow,layoutAnchor);
+}
+
+const adviceForm=document.querySelector('.ask');
+const adviceQuestion=document.getElementById('question');
+const advicePhotoButton=document.getElementById('advicePhotoButton');
+const adviceMicButton=document.getElementById('micButton');
+const adviceSendButton=adviceForm?.querySelector('.send');
+if(adviceForm&&adviceQuestion&&advicePhotoButton&&adviceMicButton&&adviceSendButton){
+  const adviceControl=document.createElement('div');
+  adviceControl.className='ask-control';
+  const adviceActions=document.createElement('span');
+  adviceActions.className='ask-actions';
+  advicePhotoButton.classList.add('ask-action','ask-photo-action');
+  adviceMicButton.classList.add('ask-action','ask-mic-action');
+  adviceSendButton.classList.add('ask-action','ask-send-action');
+  adviceForm.append(adviceControl);
+  adviceControl.append(adviceQuestion,adviceActions);
+  adviceActions.append(advicePhotoButton,adviceMicButton,adviceSendButton);
+}
+
+const mealNameControl=document.createElement('div');
+mealNameControl.className='meal-name-control';
+const mealNameActions=document.createElement('span');
+mealNameActions.className='meal-name-actions';
+const mealNameInput=document.getElementById('mealName');
+if(mealNameInput&&manualPhotoButton){
+  mealNameInput.parentElement.append(mealNameControl);
+  mealNameControl.append(mealNameInput,mealNameActions);
+  manualPhotoButton.classList.add('meal-name-action');
+  manualPhotoButton.classList.add('meal-photo-action');
+  manualPhotoButton.style.cssText='';
+  mealNameActions.append(manualPhotoButton);
+  const mealVoiceButton=document.createElement('button');
+  mealVoiceButton.type='button';
+  mealVoiceButton.className='secondary meal-name-action';
+  mealVoiceButton.textContent='🎙';
+  mealVoiceButton.title='Ввести название голосом';
+  mealVoiceButton.setAttribute('aria-label','Ввести название блюда голосом');
+  mealNameActions.append(mealVoiceButton);
+  let mealRecognition=null;
+  mealVoiceButton.onclick=()=>{
+    if(!Recognition){toast('Голосовой ввод не поддерживается этим браузером.');return}
+    if(mealRecognition){mealRecognition.stop();return}
+    mealRecognition=new Recognition();
+    mealRecognition.lang='ru-RU';
+    mealRecognition.interimResults=true;
+    mealRecognition.continuous=false;
+    mealVoiceButton.classList.add('is-listening');
+    mealVoiceButton.textContent='■';
+    mealVoiceButton.setAttribute('aria-label','Остановить голосовой ввод');
+    mealRecognition.onresult=event=>{mealNameInput.value=Array.from(event.results).map(result=>result[0].transcript).join('')};
+    mealRecognition.onerror=()=>toast('Не удалось распознать название блюда.');
+    mealRecognition.onend=()=>{mealRecognition=null;mealVoiceButton.classList.remove('is-listening');mealVoiceButton.textContent='🎙';mealVoiceButton.setAttribute('aria-label','Ввести название блюда голосом')};
+    mealRecognition.start();
+  };
+}
