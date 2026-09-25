@@ -11,38 +11,198 @@ const firebaseConfig = {
 const configured = !Object.values(firebaseConfig).some(value => value.startsWith("YOUR_"));
 const googleAuthReady = true;
 let db, user = null;
+let authState = configured ? "loading" : "ready";
+let initialization = null, signInAttempt = null, guestMode = false;
+let startGoogleSignIn;
+let sdkAttempt = 0;
+let appModuleFailed = false;
+let authMessage = "";
+const AUTH_WAIT_MS = 15000;
+window.getFirebaseAuthStatus = () => ({ state: authState, signedIn: Boolean(user), pending: Boolean(signInAttempt), message: authMessage });
 const key = (name, date = "") => `my-nutritionist:${name}:${date}`;
 const reportDebug = detail => window.dispatchEvent(new CustomEvent("nutrition-debug", { detail }));
+let profileGeneration = 0, profileRefresh = null, profileSaving = false;
+const profileCacheKey = uid => key(`account:${uid}:profile:v1`);
 
-async function loadProfile() {
-  const localProfile = localStorage.getItem(key("profile:main"));
-  if (!configured || !user || !db) return localProfile ? JSON.parse(localProfile) : null;
-  const { doc, getDoc } = window.__firestore;
-  const snapshot = await getDoc(doc(db, "users", user.uid, "profile", "main"));
-  return snapshot.exists() ? snapshot.data() : null;
+// Cache only display fields, never Firebase users, credentials or tokens.
+function profileFields(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const profile = {};
+  for (const field of ["name", "goal"]) {
+    if (typeof value[field] === "string") profile[field] = value[field].slice(0, 200);
+  }
+  for (const field of ["age", "height", "weight", "targetWeight", "calories"]) {
+    if (typeof value[field] === "number" && Number.isFinite(value[field])) profile[field] = value[field];
+  }
+  return profile;
 }
 
-async function initFirebase() {
-  if (!configured) return;
-  const [{ initializeApp }, authSdk, firestoreSdk] = await Promise.all([
-    import("https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js"),
-    import("https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js"),
-    import("https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js"),
+function cachedProfile(uid) {
+  try {
+    const entry = JSON.parse(localStorage.getItem(profileCacheKey(uid)));
+    if (entry?.version === 1 && Object.hasOwn(entry, "profile")) {
+      if (entry.profile === null) return { profile: null };
+      const profile = profileFields(entry.profile);
+      if (profile) return { profile };
+    }
+  } catch { /* Corrupt or unavailable storage must not prevent loading the profile. */ }
+  return null;
+}
+
+function cacheProfile(uid, value) {
+  try { localStorage.setItem(profileCacheKey(uid), JSON.stringify({ version: 1, profile: profileFields(value) })); }
+  catch { /* The cloud operation remains successful when device storage is full. */ }
+}
+
+function removeCachedProfile(uid) {
+  try { localStorage.removeItem(profileCacheKey(uid)); } catch {}
+}
+
+function publishProfile(uid, profile) {
+  window.dispatchEvent(new CustomEvent("nutrition-profile-updated", { detail: { uid, profile } }));
+}
+
+function refreshAccountProfile(uid) {
+  if (profileSaving) return Promise.resolve(cachedProfile(uid)?.profile ?? null);
+  const generation = profileGeneration;
+  if (profileRefresh?.uid === uid && profileRefresh.generation === generation) return profileRefresh.promise;
+  const refresh = { uid, generation };
+  refresh.promise = (async () => {
+    const { doc, getDoc } = window.__firestore;
+    const snapshot = await getDoc(doc(db, "users", uid, "profile", "main"));
+    if (user?.uid !== uid || generation !== profileGeneration) return cachedProfile(uid)?.profile ?? null;
+    const profile = snapshot.exists() ? profileFields(snapshot.data()) : null;
+    cacheProfile(uid, profile);
+    publishProfile(uid, profile);
+    return profile;
+  })().finally(() => { if (profileRefresh === refresh) profileRefresh = null; });
+  profileRefresh = refresh;
+  return refresh.promise;
+}
+
+function authError(code) { return Object.assign(new Error(code), { code }); }
+
+window.getAuthErrorMessage = error => ({
+  "auth/network-request-failed": "Не удалось связаться с Google. Проверьте интернет и повторите вход.",
+  "auth/timeout": "Ответ сервиса задерживается. Проверьте интернет и попробуйте ещё раз.",
+  "auth/loading": "Аккаунт ещё загружается. Подождите немного и повторите действие.",
+  "auth/unavailable": "Сервис входа не загрузился. Повторите подключение в профиле.",
+  "auth/popup-blocked": "Браузер заблокировал окно входа. Разрешите всплывающие окна или откройте сайт в Safari/Chrome.",
+  "auth/popup-closed-by-user": "Вход не завершён. Если окно было пустым, проверьте сеть или откройте сайт в Safari/Chrome и повторите вход.",
+  "auth/cancelled-popup-request": "Уже открыто другое окно входа. Завершите вход в нём.",
+  "auth/unauthorized-domain": "Для этого адреса сайта не настроен вход. Обратитесь к администратору.",
+  "auth/operation-not-allowed": "Вход через Google пока не настроен.",
+}[error?.code] || "Не удалось войти через Google. Попробуйте ещё раз или откройте сайт в Safari/Chrome.");
+
+function withAuthTimeout(promise, code = "auth/timeout") {
+  let timer;
+  return Promise.race([promise, new Promise((_, reject) => {
+    timer = setTimeout(() => reject(authError(code)), AUTH_WAIT_MS);
+  })]).finally(() => clearTimeout(timer));
+}
+
+async function waitForAccount() {
+  if (!configured || guestMode) return;
+  if (authState === "loading") await withAuthTimeout(initialization, "auth/loading");
+  if (authState !== "ready") throw authError("auth/unavailable");
+  if (signInAttempt && !user) await withAuthTimeout(signInAttempt, "auth/loading");
+}
+
+// Defined before the SDK loads: a pending session must never look signed out.
+window.getFirebaseIdToken = async () => {
+  await waitForAccount();
+  return user ? withAuthTimeout(user.getIdToken()) : null;
+};
+window.firebaseSignInWithGoogle = () => {
+  if (signInAttempt) return signInAttempt;
+  if (authState !== "ready" || !startGoogleSignIn) return Promise.reject(authError(authState === "loading" ? "auth/loading" : "auth/unavailable"));
+  if (navigator.onLine === false) return Promise.reject(authError("auth/network-request-failed"));
+  authMessage = "";
+  // Invoke synchronously from the click; awaiting initialization here loses the mobile user gesture.
+  const attempt = startGoogleSignIn();
+  const slowTimer = setTimeout(() => {
+    authMessage = "Вход занимает больше времени. Дождитесь окна Google. Если оно пустое, закройте его и повторите вход при устойчивой сети или в Safari/Chrome.";
+    updateStatus();
+  }, AUTH_WAIT_MS);
+  signInAttempt = Promise.resolve(attempt).catch(error => {
+    authMessage = window.getAuthErrorMessage(error);
+    throw error;
+  }).finally(() => {
+    clearTimeout(slowTimer);
+    signInAttempt = null;
+    updateStatus();
+  });
+  updateStatus();
+  return signInAttempt;
+};
+
+async function loadProfile() {
+  await waitForAccount();
+  if (!configured || !user || !db) {
+    const localProfile = localStorage.getItem(key("profile:main"));
+    return localProfile ? JSON.parse(localProfile) : null;
+  }
+  const cached = cachedProfile(user.uid);
+  const refresh = refreshAccountProfile(user.uid);
+  if (cached) {
+    refresh.catch(() => {}); // Keep the last known profile on a temporary network error.
+    return cached.profile;
+  }
+  return refresh;
+}
+
+async function connectFirebase() {
+  // Keep firebase-app at its canonical URL: Auth/Firestore import that same
+  // module and must share its component registry. A failed app import needs reload.
+  const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js").catch(error => {
+    appModuleFailed = true;
+    throw error;
+  });
+  // Browsers cache failed module loads. Retry Auth/Firestore entrypoints under a fresh URL.
+  const retry = sdkAttempt++ ? `?retry=${sdkAttempt}` : "";
+  const [authSdk, firestoreSdk] = await Promise.all([
+    import(`https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js${retry}`),
+    import(`https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js${retry}`),
   ]);
   const app = initializeApp(firebaseConfig);
   db = firestoreSdk.getFirestore(app);
-  authSdk.onAuthStateChanged(authSdk.getAuth(app), current => {
+  window.__firestore = firestoreSdk;
+  const auth = authSdk.getAuth(app);
+  startGoogleSignIn = () => authSdk.signInWithPopup(auth, new authSdk.GoogleAuthProvider());
+  window.firebaseSignOut = () => authSdk.signOut(auth);
+  window.firebaseSignInWithEmail = (email, password) => authSdk.signInWithEmailAndPassword(auth, email, password);
+  window.firebaseRegisterWithEmail = (email, password) => authSdk.createUserWithEmailAndPassword(auth, email, password);
+  await new Promise((resolve, reject) => authSdk.onAuthStateChanged(auth, current => {
+    if (user?.uid && user.uid !== current?.uid) removeCachedProfile(user.uid);
+    profileGeneration++;
+    profileRefresh = null;
+    profileSaving = false;
     user = current;
+    authState = "ready";
+    guestMode = false;
+    authMessage = "";
     updateStatus();
     reportDebug({ type: "auth", configured, signedIn: Boolean(current) });
     window.dispatchEvent(new Event("nutrition-auth-changed"));
-  });
-  window.firebaseSignInWithGoogle = async () => authSdk.signInWithPopup(authSdk.getAuth(app), new authSdk.GoogleAuthProvider());
-  window.firebaseSignOut = () => authSdk.signOut(authSdk.getAuth(app));
-  window.getFirebaseIdToken = async () => user ? user.getIdToken() : null;
-  window.firebaseSignInWithEmail = (email, password) => authSdk.signInWithEmailAndPassword(authSdk.getAuth(app), email, password);
-  window.firebaseRegisterWithEmail = (email, password) => authSdk.createUserWithEmailAndPassword(authSdk.getAuth(app), email, password);
-  window.__firestore = firestoreSdk;
+    resolve();
+  }, reject));
+}
+
+function initFirebase() {
+  if (!configured || initialization) return initialization;
+  authState = "loading";
+  authMessage = "";
+  const slowTimer = setTimeout(() => {
+    authMessage = "Медленное соединение: ждём сервис входа. Можно пока работать как гость.";
+    updateStatus();
+  }, AUTH_WAIT_MS);
+  initialization = connectFirebase().catch(() => {
+    authState = "error";
+    authMessage = window.getAuthErrorMessage(authError("auth/unavailable"));
+    initialization = null;
+  }).finally(() => { clearTimeout(slowTimer); updateStatus(); });
+  updateStatus();
+  return initialization;
 }
 
 function updateStatus() {
@@ -54,8 +214,9 @@ function updateStatus() {
     const screen = document.getElementById("profile");
     if (screen) screen.prepend(element);
   }
-  if (element) element.textContent = configured ? (user ? `Синхронизация: ${user.email || "аккаунт подключён"}` : "Войдите, чтобы синхронизировать данные") : "Локальный режим: Firebase пока не подключён";
+  if (element) element.textContent = !configured ? "Локальный режим: Firebase пока не подключён" : user ? `Синхронизация: ${user.email || "аккаунт подключён"}` : guestMode ? "Гостевой режим: данные сохраняются на этом устройстве" : authState === "loading" ? "Подключаемся и восстанавливаем вход…" : authState === "error" ? "Сервис входа недоступен" : "Войдите, чтобы синхронизировать данные";
   updateAuthUI();
+  window.dispatchEvent(new Event("nutrition-auth-status"));
 }
 
 function updateAuthUI() {
@@ -64,26 +225,58 @@ function updateAuthUI() {
   if (!screen) return;
   if (!panel) { panel = document.createElement("section"); panel.id = "authPanel"; panel.className = "card"; screen.append(panel); }
   if (!configured) { panel.innerHTML = '<b>Гостевой режим</b><p class="hello">Данные остаются на этом устройстве. После настройки Firebase здесь появится вход и синхронизация.</p><button class="secondary" type="button" disabled>Войти после настройки Firebase</button>'; return; }
+  if (authState !== "ready") {
+    panel.innerHTML = '<b>Подключение аккаунта</b><p class="hello" role="status"></p><button class="primary" type="button" id="retryAuth"></button><button class="secondary" type="button" id="guestAuth">Продолжить как гость</button>';
+    panel.querySelector('p').textContent = authMessage || "Восстанавливаем сохранённый вход. При медленном интернете это может занять время.";
+    const retry = document.getElementById("retryAuth");
+    retry.textContent = authState === "loading" ? "Подключаемся…" : appModuleFailed ? "Перезагрузить страницу" : "Повторить подключение";
+    retry.disabled = authState === "loading";
+    retry.onclick = () => appModuleFailed ? window.location.reload() : initFirebase();
+    if (authState === "error" && sdkAttempt > 1 && !appModuleFailed) {
+      const reload = document.createElement("button");
+      reload.type = "button"; reload.className = "secondary";
+      reload.textContent = "Перезагрузить страницу";
+      reload.onclick = () => window.location.reload();
+      panel.append(reload);
+    }
+    document.getElementById("guestAuth").onclick = () => { guestMode = true; updateStatus(); window.dispatchEvent(new Event("nutrition-auth-changed")); };
+    return;
+  }
   if (!googleAuthReady) { panel.innerHTML = '<b>Гостевой режим</b><p class="hello">Firebase подключён, но Google-вход ещё не активирован. Пока данные остаются на этом устройстве.</p><button class="secondary" type="button" disabled>Google-вход ожидает настройки</button>'; return; }
   if (user) { panel.innerHTML = `<b>${user.email || 'Аккаунт подключён'}</b><p class="hello">Ваши данные синхронизируются с личным аккаунтом.</p><button class="secondary" type="button" id="signOutButton">Выйти</button>`; document.getElementById("signOutButton").onclick = () => window.firebaseSignOut(); return; }
   panel.innerHTML = '<b>Синхронизация данных</b><p class="hello">Войдите через Google, чтобы сохранять данные в личном аккаунте. До входа приложение работает как гость.</p><button class="primary" type="button" id="googleSignIn">Войти через Google</button>';
-  document.getElementById("googleSignIn").onclick = () => window.firebaseSignInWithGoogle().catch(() => alert("Не удалось войти через Google."));
+  const button = document.getElementById("googleSignIn");
+  button.disabled = Boolean(signInAttempt);
+  button.textContent = signInAttempt ? "Ожидаем вход через Google…" : "Войти через Google";
+  if (authMessage) panel.querySelector('p').textContent = authMessage;
+  button.onclick = () => window.firebaseSignInWithGoogle().catch(error => { authMessage = window.getAuthErrorMessage(error); updateStatus(); });
 }
 
 async function save(collection, id, value) {
+  await waitForAccount();
   if (!configured || !user || !db) {
     localStorage.setItem(key(`${collection}:${id}`), JSON.stringify(value));
     reportDebug({ type: "save", mode: "local", collection, reason: "Нет авторизованного Firebase-пользователя" });
     return { mode: "local" };
   }
+  const uid = user.uid;
+  const isProfile = collection === "profile" && id === "main";
+  const generation = isProfile ? ++profileGeneration : profileGeneration;
+  if (isProfile) profileSaving = true;
   try {
     const { doc, setDoc, serverTimestamp } = window.__firestore;
-    await setDoc(doc(db, "users", user.uid, collection, id), { ...value, updatedAt: serverTimestamp() }, { merge: true });
+    await setDoc(doc(db, "users", uid, collection, id), { ...value, updatedAt: serverTimestamp() }, { merge: true });
+    if (isProfile && user?.uid === uid && generation === profileGeneration) {
+      cacheProfile(uid, value);
+      publishProfile(uid, profileFields(value));
+    }
     reportDebug({ type: "save", mode: "cloud", collection });
     return { mode: "cloud" };
   } catch (error) {
     reportDebug({ type: "save", mode: "error", collection, reason: String(error?.code || error?.message || "Неизвестная ошибка").slice(0, 180) });
     throw error;
+  } finally {
+    if (isProfile && generation === profileGeneration) profileSaving = false;
   }
 }
 
@@ -92,6 +285,7 @@ function normalizeProductName(name) {
 }
 
 async function loadProduct(name) {
+  await waitForAccount();
   const normalizedName = normalizeProductName(name);
   if (!normalizedName) return null;
   const localProduct = localStorage.getItem(key("products", normalizedName));
@@ -123,6 +317,7 @@ async function saveProduct(product) {
 }
 
 async function loadWaterLog(date) {
+  await waitForAccount();
   const safeDate = String(date || "");
   if (!safeDate) return null;
   if (!configured || !user || !db) {
@@ -135,6 +330,7 @@ async function loadWaterLog(date) {
 }
 
 async function loadDiaryEntries(date) {
+  await waitForAccount();
   if (!configured || !user || !db) {
     const prefix = key("foodDiary");
     return Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index)).filter(storageKey => storageKey?.startsWith(prefix)).flatMap(storageKey => {
@@ -150,6 +346,7 @@ async function loadDiaryEntries(date) {
 }
 
 async function loadWeightEntries() {
+  await waitForAccount();
   if (!configured || !user || !db) {
     const prefix = key("weightEntries");
     return Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index)).filter(storageKey => storageKey?.startsWith(prefix)).flatMap(storageKey => {
@@ -167,7 +364,7 @@ async function loadWeightEntries() {
 window.nutritionStore = {
   saveProfile: profile => save("profile", "main", profile),
   loadProfile,
-  getAccountProfileDefaults: () => ({ name: user?.displayName || "", email: user?.email || "", photoUrl: user?.photoURL || "" }),
+  getAccountProfileDefaults: () => ({ uid: user?.uid || "", name: user?.displayName || "", email: user?.email || "", photoUrl: user?.photoURL || "" }),
   saveDayPlan: plan => save("dayPlans", plan.date, plan),
   saveWaterLog: log => save("waterLogs", log.date, log),
   loadWaterLog,
@@ -177,6 +374,7 @@ window.nutritionStore = {
     return save("foodDiary", id, { ...entry, id });
   },
   deleteDiaryEntry: async id => {
+    await waitForAccount();
     if (!id) throw new Error("Не указана запись дневника");
     if (!configured || !user || !db) {
       localStorage.removeItem(key(`foodDiary:${id}`));
@@ -192,6 +390,7 @@ window.nutritionStore = {
   saveProduct,
 };
 
+initFirebase();
 window.dispatchEvent(new Event("nutritionstore-ready"));
 
 window.addProposedMeal = async meal => {
@@ -219,5 +418,8 @@ window.addProposedProduct = async product => {
   await window.nutritionStore.saveProduct(entry);
 };
 
-initFirebase().catch(() => { updateStatus(); });
+window.addEventListener("online", () => {
+  if (authState === "error" && !appModuleFailed) initFirebase();
+  if (user && db) refreshAccountProfile(user.uid).catch(() => {});
+});
 updateStatus();
