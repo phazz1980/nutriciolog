@@ -24,6 +24,8 @@ jobs:
         run: |
           mkdir -p deploy
           cp index.html deploy/
+          cp styles.css deploy/
+          cp app.js deploy/
           cp firebase-client.js deploy/
           cp photo-picker.js deploy/
           cp pwa.js deploy/
