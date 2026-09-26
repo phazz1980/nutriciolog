@@ -22,7 +22,7 @@ export default {
   async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response(null, { headers: corsHeaders(request) });
     if (request.method === "GET" && new URL(request.url).pathname === "/api/health") {
-      return json({ status: "ok", version: "0.1.15", provider: env.AI_PROVIDER || null, model: env.BLACKROUTE_MODEL || null, apiKeyConfigured: Boolean(env.BLACKROUTE_API_KEY) }, 200, request);
+      return json({ status: "ok", version: "0.1.16", provider: env.AI_PROVIDER || null, textModel: env.BLACKROUTE_MODEL || null, visionModel: env.BLACKROUTE_VISION_MODEL || null, apiKeyConfigured: Boolean(env.BLACKROUTE_API_KEY) }, 200, request);
     }
     if (request.method !== "POST") return json({ error: "Method not allowed" }, 405, request);
     try {
@@ -34,7 +34,7 @@ export default {
       if (model !== null && typeof model !== "string") return json({ error: "Недопустимая модель." }, 400, request);
       if (image && (!/^image\/(jpeg|png|webp)$/.test(image.mimeType || "") || typeof image.dataUrl !== "string" || image.dataUrl.length > 5_600_000)) return json({ error: "Недопустимое фото. Используйте JPEG, PNG или WebP до 4 МБ." }, 400, request);
       const requestedModel = claims.email?.toLowerCase() === MODEL_SELECTOR_EMAIL ? model : null;
-      const provider = getProvider(env, requestedModel);
+      const provider = getProvider(env, requestedModel, image);
       if (image && !provider.supportsVision) return json({ advice: "Этот ИИ пока не умеет анализировать фото. Опишите, пожалуйста, блюдо и примерную порцию текстом.", proposedMeal: null, proposedProducts: [] }, 200, request);
       const result = await provider.advise(message.trim(), image);
       return json(result, 200, request);

@@ -17,7 +17,7 @@ function redactDiagnostic(value) {
 
 export function createBlackrouteProvider(apiKey, model = "deepseek-v3.2-maas") {
   if (!apiKey) throw new Error("Blackroute provider is missing its Worker secret");
-  const supportsVision = new Set(["gemini-2.5-flash-lite", "gemini-3.6-flash"]).has(model);
+  const supportsVision = new Set(["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.6-flash"]).has(model);
   const parseResult = rawPayload => {
     let data;
     try { data = JSON.parse(rawPayload); }
