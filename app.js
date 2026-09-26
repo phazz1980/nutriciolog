@@ -439,3 +439,32 @@ if(mealNameInput&&manualPhotoButton){
     mealRecognition.start();
   };
 }
+
+function showAiResponseDiagnostic(rawResponse){
+  const debug=document.getElementById('aiDebug');
+  if(!debug||typeof rawResponse!=='string'||!rawResponse)return;
+  let panel=document.getElementById('aiResponseDiagnostic');
+  if(!panel){
+    panel=document.createElement('details');panel.id='aiResponseDiagnostic';panel.className='ai-response-diagnostic';
+    const summary=document.createElement('summary');summary.textContent='Показать ответ ИИ для диагностики';
+    const pre=document.createElement('pre');const copy=document.createElement('button');copy.type='button';copy.className='link';copy.textContent='Скопировать';
+    copy.onclick=async()=>{try{await navigator.clipboard.writeText(pre.textContent);copy.textContent='Скопировано'}catch{copy.textContent='Не удалось скопировать'}};
+    panel.append(summary,pre,copy);debug.after(panel);
+  }
+  panel.querySelector('pre').textContent=rawResponse;panel.open=true;
+}
+
+window.askAI=async function(event){
+  event.preventDefault();const text=question.value.trim();if(!text)return;
+  const token=await getAiToken();if(token===undefined)return;if(!token){chatStatus.textContent='Войдите через Google в профиле, чтобы воспользоваться ИИ.';show('profile');return}
+  const before=chatlog.children.length;document.getElementById('aiResponseDiagnostic')?.remove();chatlog.insertAdjacentHTML('beforeend','<div class="bubble user"></div>');chatlog.lastElementChild.textContent=text;question.value='';chatStatus.textContent='Формирую ответ…';setAiDebug('запрос отправлен');
+  try{
+    const response=await requestAiAdvice({method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({message:text,image:selectedPhoto})});
+    const body=await response.text();let data;try{data=JSON.parse(body)}catch{throw new Error('Worker вернул ответ не в JSON-формате')}
+    if(!response.ok){setAiDebug(`Worker ответил HTTP ${response.status}`);showAiResponseDiagnostic(data.debugResponse);throw new Error(data.error||'Ошибка сервиса')}
+    if(typeof data.advice!=='string')throw new Error('Worker вернул неполный ответ');
+    setAiDebug('Worker ответил успешно');chatlog.insertAdjacentHTML('beforeend','<div class="bubble"></div>');chatlog.lastElementChild.textContent=data.advice;chatStatus.textContent='Ответ носит справочный характер.';
+    if(data.proposedProducts)await showProductProposals(data.proposedProducts);if(data.proposedMeal)showMealProposal(data.proposedMeal);removePhoto();
+    if(voiceOn&&chatlog.children.length>before&&'speechSynthesis'in window){speechSynthesis.cancel();const utterance=new SpeechSynthesisUtterance(data.advice);utterance.lang='ru-RU';speechSynthesis.speak(utterance)}
+  }catch(error){const status=document.getElementById('aiDebug')?.textContent||'';if(!status.includes('HTTP'))setAiDebug('ошибка запроса');chatStatus.textContent='Не удалось получить ответ: '+error.message}
+};
