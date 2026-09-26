@@ -20,7 +20,7 @@ let voiceCancelled=false;window.toggleVoice=function(){if(!Recognition){setVoice
 
 function setAiDebug(text){const panel=document.getElementById('aiDebug');if(!panel)return;panel.textContent=`Отладка: ${text}`;panel.style.display='block'}
 window.askAI=async function(e){e.preventDefault();const text=question.value.trim();if(!text)return;const token=await getAiToken();if(token===undefined)return;if(!token){chatStatus.textContent='Войдите через Google в профиле, чтобы воспользоваться ИИ.';show('profile');return}const before=chatlog.children.length;chatlog.insertAdjacentHTML('beforeend','<div class="bubble user"></div>');chatlog.lastElementChild.textContent=text;question.value='';chatStatus.textContent='Формирую ответ…';setAiDebug('запрос отправлен');try{const r=await requestAiAdvice({method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({message:text,image:selectedPhoto})});const d=await r.json();if(!r.ok){setAiDebug(`Worker ответил HTTP ${r.status}`);throw new Error(d.error||'Ошибка сервиса')}setAiDebug('Worker ответил успешно');chatlog.insertAdjacentHTML('beforeend','<div class="bubble"></div>');chatlog.lastElementChild.textContent=d.advice;chatStatus.textContent='Ответ носит справочный характер.';if(d.proposedProducts)await showProductProposals(d.proposedProducts);if(d.proposedMeal)showMealProposal(d.proposedMeal);removePhoto();if(voiceOn&&chatlog.children.length>before&&'speechSynthesis'in window){speechSynthesis.cancel();const utterance=new SpeechSynthesisUtterance(d.advice);utterance.lang='ru-RU';speechSynthesis.speak(utterance)}}catch(err){const status=document.getElementById('aiDebug')?.textContent||'';if(!status.includes('HTTP'))setAiDebug('ошибка запроса');chatStatus.textContent='Не удалось получить ответ: '+err.message}}
-const APP_VERSION='v0.2.8';const RELEASE_DATE='26 сентября 2026';const defaultProfile={name:'Анна',age:27,height:165,weight:65.4,targetWeight:62,goal:'Похудение',calories:1800};let currentProfile={...defaultProfile};let currentAccount={};let profileNameReady=false;let profileNameFallbackTimer;let profileLoadVersion=0;
+const APP_VERSION='v0.2.9';const RELEASE_DATE='26 сентября 2026';const defaultProfile={name:'Анна',age:27,height:165,weight:65.4,targetWeight:62,goal:'Похудение',calories:1800};let currentProfile={...defaultProfile};let currentAccount={};let profileNameReady=false;let profileNameFallbackTimer;let profileLoadVersion=0;
 function formatNumber(value){return Number(value).toLocaleString('ru-RU',{maximumFractionDigits:1})}
 function firstName(name){return String(name||'').trim().split(/\s+/)[0]||''}
 function renderProfile(){document.getElementById('profileName').textContent=profileNameReady?currentProfile.name:'Загружаем профиль…';const avatar=document.getElementById('profileAvatar');avatar.replaceChildren();if(currentAccount.photoUrl){const photo=document.createElement('img');photo.src=currentAccount.photoUrl;photo.alt='Фото профиля Google';photo.referrerPolicy='no-referrer';photo.style.cssText='width:100%;height:100%;object-fit:cover;border-radius:50%';avatar.append(photo)}else avatar.textContent='🌿';document.getElementById('profileSummary').textContent=` · ${currentProfile.age} лет · ${formatNumber(currentProfile.height)} см · ${formatNumber(currentProfile.weight)} кг`;document.getElementById('profileGoal').textContent=currentProfile.goal;document.getElementById('profileRate').textContent=`Цель: ${formatNumber(currentProfile.targetWeight)} кг`;document.getElementById('profileCalories').textContent=`${formatNumber(currentProfile.calories)} ккал`;document.getElementById('releaseInfo').textContent=`Версия ${APP_VERSION} · ${RELEASE_DATE}`}
@@ -468,3 +468,49 @@ window.askAI=async function(event){
     if(voiceOn&&chatlog.children.length>before&&'speechSynthesis'in window){speechSynthesis.cancel();const utterance=new SpeechSynthesisUtterance(data.advice);utterance.lang='ru-RU';speechSynthesis.speak(utterance)}
   }catch(error){const status=document.getElementById('aiDebug')?.textContent||'';if(!status.includes('HTTP'))setAiDebug('ошибка запроса');chatStatus.textContent='Не удалось получить ответ: '+error.message}
 };
+
+async function recognizeManualMealPhoto(file){
+  if(!file)return;
+  if(file.size>4*1024*1024){toast('Фото должно быть не больше 4 МБ');return}
+  const token=await getAiToken();
+  if(token===undefined)return;
+  if(!token){window.showAuthRequiredDialog();return}
+  manualPhotoButton.disabled=true;
+  manualPhotoButton.textContent='…';
+  try{
+    const dataUrl=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file)});
+    const response=await requestAiAdvice({method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({message:'Распознай блюдо на фотографии. Верни один наиболее заметный продукт или блюдо с ориентировочными калориями, белками, жирами, углеводами и весом порции в граммах. Не сохраняй ничего.',image:{dataUrl,mimeType:file.type}})});
+    const data=await response.json();
+    if(!response.ok){showManualPhotoDiagnostic(data.debugResponse);throw new Error(data.error||'Ошибка сервиса')}
+    const estimate=data.proposedProducts?.find(product=>product?.title&&Number.isFinite(Number(product.calories)))||data.proposedMeal;
+    if(!estimate?.title||!Number.isFinite(Number(estimate.calories)))throw new Error('ИИ не смог распознать блюдо');
+    mealName.value=estimate.title;
+    portion.value=Math.round(Number(estimate.portion)||0)||'';
+    calories.value=Math.round(Number(estimate.calories));
+    protein.value=Number(estimate.protein||0);
+    fat.value=Number(estimate.fat||0);
+    carbs.value=Number(estimate.carbs||0);
+    toast('Данные заполнены по фото — проверьте их перед сохранением');
+  }catch(error){toast(`Не удалось распознать фото: ${error.message}`)}
+  finally{manualPhotoInput.value='';manualPhotoButton.textContent='📷';manualPhotoButton.disabled=false}
+}
+
+function showManualPhotoDiagnostic(rawResponse){
+  if(typeof rawResponse!=='string'||!rawResponse)return;
+  let panel=document.getElementById('manualPhotoDiagnostic');
+  if(!panel){
+    panel=document.createElement('details');
+    panel.id='manualPhotoDiagnostic';
+    panel.className='ai-response-diagnostic';
+    const summary=document.createElement('summary');
+    summary.textContent='Показать ответ ИИ для диагностики';
+    const content=document.createElement('pre');
+    const copy=document.createElement('button');
+    copy.type='button';copy.className='link';copy.textContent='Скопировать';
+    copy.onclick=async()=>{try{await navigator.clipboard.writeText(content.textContent);copy.textContent='Скопировано'}catch{copy.textContent='Не удалось скопировать'}};
+    panel.append(summary,content,copy);
+    mealNameControl.after(panel);
+  }
+  panel.querySelector('pre').textContent=rawResponse;
+  panel.open=true;
+}
