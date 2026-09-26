@@ -18,47 +18,55 @@ function redactDiagnostic(value) {
 export function createBlackrouteProvider(apiKey, model = "deepseek-v3.2-maas") {
   if (!apiKey) throw new Error("Blackroute provider is missing its Worker secret");
   const supportsVision = new Set(["gemini-2.5-flash-lite", "gemini-3.6-flash"]).has(model);
+  const parseResult = rawPayload => {
+    let data;
+    try { data = JSON.parse(rawPayload); }
+    catch { throw new AiResponseFormatError(rawPayload); }
+    const content = data?.choices?.[0]?.message?.content;
+    if (typeof content !== "string") throw new AiResponseFormatError(rawPayload);
+    let result;
+    try { result = JSON.parse(content.replace(/^```(?:json)?\s*|\s*```$/g, "").trim()); }
+    catch { throw new AiResponseFormatError(content); }
+    if (typeof result?.advice !== "string" || !(result.proposedMeal === null || typeof result.proposedMeal === "object") || !Array.isArray(result.proposedProducts) || result.proposedProducts.length > 8 || result.proposedProducts.some(product => !product || typeof product.title !== "string" || ![product.portion, product.calories, product.protein, product.fat, product.carbs].every(Number.isFinite))) throw new AiResponseFormatError(content);
+    return result;
+  };
   return {
     supportsVision,
     async advise(message, image = null) {
-      let response;
-      try {
-        response = await fetch("https://blackroute.ironborn.cc/v1/chat/completions", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model,
-            messages: [
-              { role: "system", content: instructions },
-              { role: "user", content: image ? [{ type: "text", text: message }, { type: "image_url", image_url: { url: image.dataUrl } }] : message },
-            ],
-            temperature: 0.3,
-            max_tokens: 300,
-            response_format: { type: "json_object" },
-          }),
-        });
-      } catch {
-        throw new Error("Blackroute network request failed");
-      }
-      if (!response.ok) {
-        let code = "";
+      const requestAnswer = async retry => {
+        let response;
         try {
-          const error = await response.json();
-          code = String(error?.error?.code || error?.error?.type || "").slice(0, 60);
-        } catch {}
-        throw new Error(`Blackroute request failed (${response.status}${code ? `:${code}` : ""})`);
+          response = await fetch("https://blackroute.ironborn.cc/v1/chat/completions", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model,
+              messages: [
+                { role: "system", content: `${instructions}${retry ? "\n\nКРИТИЧЕСКИ: предыдущий ответ не прошёл проверку. Верни ТОЛЬКО один валидный JSON-объект без Markdown, пояснений и блоков кода." : ""}` },
+                { role: "user", content: image ? [{ type: "text", text: message }, { type: "image_url", image_url: { url: image.dataUrl } }] : message },
+              ],
+              temperature: 0.3,
+              max_tokens: 300,
+              response_format: { type: "json_object" },
+            }),
+          });
+        } catch { throw new Error("Blackroute network request failed"); }
+        if (!response.ok) {
+          let code = "";
+          try { const error = await response.json(); code = String(error?.error?.code || error?.error?.type || "").slice(0, 60); } catch {}
+          throw new Error(`Blackroute request failed (${response.status}${code ? `:${code}` : ""})`);
+        }
+        return parseResult(await response.text());
+      };
+      try { return await requestAnswer(false); }
+      catch (firstError) {
+        if (!(firstError instanceof AiResponseFormatError)) throw firstError;
+        try { return await requestAnswer(true); }
+        catch (retryError) {
+          if (retryError instanceof AiResponseFormatError) throw new AiResponseFormatError(`Первая попытка:\n${firstError.rawResponse}\n\nПовторная попытка:\n${retryError.rawResponse}`);
+          throw retryError;
+        }
       }
-      const rawPayload = await response.text();
-      let data;
-      try { data = JSON.parse(rawPayload); }
-      catch { throw new AiResponseFormatError(rawPayload); }
-      const content = data?.choices?.[0]?.message?.content;
-      if (typeof content !== "string") throw new AiResponseFormatError(rawPayload);
-      let result;
-      try { result = JSON.parse(content.replace(/^```(?:json)?\s*|\s*```$/g, "").trim()); }
-      catch { throw new AiResponseFormatError(content); }
-      if (typeof result?.advice !== "string" || !(result.proposedMeal === null || typeof result.proposedMeal === "object") || !Array.isArray(result.proposedProducts) || result.proposedProducts.length > 8 || result.proposedProducts.some(product => !product || typeof product.title !== "string" || ![product.portion, product.calories, product.protein, product.fat, product.carbs].every(Number.isFinite))) throw new AiResponseFormatError(content);
-      return result;
     },
   };
 }
