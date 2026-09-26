@@ -46,7 +46,7 @@ export function createBlackrouteProvider(apiKey, model = "deepseek-v3.2-maas") {
                 { role: "user", content: image ? [{ type: "text", text: message }, { type: "image_url", image_url: { url: image.dataUrl } }] : message },
               ],
               temperature: 0.3,
-              max_tokens: 300,
+              max_tokens: 1000,
               response_format: { type: "json_object" },
             }),
           });
