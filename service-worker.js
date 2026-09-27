@@ -1,8 +1,16 @@
-const CACHE = "my-nutritionist-shell-v18";
+const CACHE = "my-nutritionist-shell-v19";
 const SHELL = ["./", "./index.html", "./styles.css", "./app.js", "./firebase-client.js", "./pwa.js", "./photo-picker.js", "./manifest.webmanifest", "./icons/app-icon.svg", "./icons/nutritionist-logo.png"];
-const SHELL_URLS = new Set(SHELL.map(path => new URL(path, self.registration.scope).href));
+const FIREBASE_SDK = ["https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js", "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js", "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js"];
+const SHELL_URLS = new Set([...SHELL.map(path => new URL(path, self.registration.scope).href), ...FIREBASE_SDK]);
 
-self.addEventListener("install", event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting())));
+self.addEventListener("install", event => event.waitUntil(caches.open(CACHE).then(async cache => {
+  await cache.addAll(SHELL);
+  // The SDK is public code, not authentication data. Its cache is best-effort so
+  // a temporary gstatic outage never prevents the application shell from updating.
+  await Promise.all(FIREBASE_SDK.map(async url => {
+    try { const response = await fetch(url); if (response.ok) await cache.put(url, response); } catch {}
+  }));
+}).then(() => self.skipWaiting())));
 self.addEventListener("activate", event => event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim())));
 self.addEventListener("fetch", event => {
   if (event.request.method !== "GET" || !SHELL_URLS.has(event.request.url)) return;
