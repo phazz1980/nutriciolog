@@ -11,6 +11,8 @@ const source = fs.readFileSync(path.join(root, 'firebase-client.js'), 'utf8');
 const authSdk = `
 import {registry} from './firebase-app.js';
 export const getAuth=app=>{if(app.registry!==registry)throw new Error('Duplicate Firebase app registry');return {}};
+export const browserLocalPersistence={};
+export const setPersistence=()=>Promise.resolve();
 export class GoogleAuthProvider {}
 export function onAuthStateChanged(auth, next){
   window.test.setUser=next;
@@ -289,12 +291,12 @@ export const serverTimestamp=()=>0;
     }
     assert.equal(await request(`${origin}/firebase-client.js`), cached);
     assert.equal(request(`${origin}/api/advice`), undefined);
-    assert.equal(request('https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js'), undefined);
+    assert.equal(await request('https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js'), cached);
     assert.equal(request(`${origin}/index.html`, 'POST'), undefined);
     fetchResult = async () => ({ ok: false });
     assert.equal(await request(`${origin}/index.html`), cached);
     assert.equal(stored.length, 0);
-    console.log('PASS Service worker uses cached shell on a slow/error response; excludes API, SDK, and POST');
+    console.log('PASS Service worker uses cached shell and public Firebase SDK on a slow/error response; excludes API and POST');
   } finally {
     await browser?.close();
     await new Promise(resolve => server.close(resolve));

@@ -168,6 +168,11 @@ async function connectFirebase() {
   db = firestoreSdk.getFirestore(app);
   window.__firestore = firestoreSdk;
   const auth = authSdk.getAuth(app);
+  // Be explicit: Firebase keeps its own session state in browser storage.
+  // No user object, credential or ID token is copied into this application.
+  // If a browser disallows persistent storage, keep Firebase's normal fallback
+  // rather than making the whole app unavailable.
+  await authSdk.setPersistence(auth, authSdk.browserLocalPersistence).catch(() => {});
   startGoogleSignIn = () => authSdk.signInWithPopup(auth, new authSdk.GoogleAuthProvider());
   window.firebaseSignOut = () => authSdk.signOut(auth);
   window.firebaseSignInWithEmail = (email, password) => authSdk.signInWithEmailAndPassword(auth, email, password);
