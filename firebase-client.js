@@ -13,7 +13,7 @@ const googleAuthReady = true;
 let db, user = null;
 let authState = configured ? "loading" : "ready";
 let initialization = null, signInAttempt = null, guestMode = false;
-let startGoogleSignIn, startEmailSignIn, startEmailRegistration, startPasswordReset;
+let startGoogleSignIn, startEmailSignIn, startEmailRegistration, startPasswordReset, startEmailVerification, authSdkCurrentUser;
 let sdkAttempt = 0;
 let appModuleFailed = false;
 let authMessage = "";
@@ -160,11 +160,27 @@ function startEmailAttempt(action) {
 }
 
 window.firebaseSignInWithEmail = (email, password) => startEmailAttempt(() => startEmailSignIn(email, password));
-window.firebaseRegisterWithEmail = (email, password) => startEmailAttempt(() => startEmailRegistration(email, password));
+window.firebaseRegisterWithEmail = (email, password) => startEmailAttempt(() => startEmailRegistration(email, password)).then(async credential => {
+  await startEmailVerification(credential.user);
+  return credential;
+});
 window.firebaseSendPasswordReset = email => {
   if (authState !== "ready" || !startPasswordReset) return Promise.reject(authError(authState === "loading" ? "auth/loading" : "auth/unavailable"));
   if (navigator.onLine === false) return Promise.reject(authError("auth/network-request-failed"));
   return startPasswordReset(email);
+};
+window.firebaseSendEmailVerification = () => {
+  if (!user || authState !== "ready" || !startEmailVerification) return Promise.reject(authError("auth/unavailable"));
+  if (navigator.onLine === false) return Promise.reject(authError("auth/network-request-failed"));
+  return startEmailVerification(user);
+};
+window.firebaseRefreshEmailVerification = async () => {
+  if (!user || authState !== "ready") throw authError("auth/unavailable");
+  await user.reload();
+  user = authSdkCurrentUser();
+  updateStatus();
+  window.dispatchEvent(new Event("nutrition-auth-changed"));
+  return Boolean(user?.emailVerified);
 };
 
 async function loadProfile() {
@@ -199,6 +215,8 @@ async function connectFirebase() {
   db = firestoreSdk.getFirestore(app);
   window.__firestore = firestoreSdk;
   const auth = authSdk.getAuth(app);
+  authSdkCurrentUser = () => auth.currentUser;
+  auth.languageCode = "ru";
   // Be explicit: Firebase keeps its own session state in browser storage.
   // No user object, credential or ID token is copied into this application.
   // If a browser disallows persistent storage, keep Firebase's normal fallback
@@ -209,6 +227,7 @@ async function connectFirebase() {
   startEmailSignIn = (email, password) => authSdk.signInWithEmailAndPassword(auth, email, password);
   startEmailRegistration = (email, password) => authSdk.createUserWithEmailAndPassword(auth, email, password);
   startPasswordReset = email => authSdk.sendPasswordResetEmail(auth, email);
+  startEmailVerification = account => authSdk.sendEmailVerification(account);
   await new Promise((resolve, reject) => authSdk.onAuthStateChanged(auth, current => {
     if (user?.uid && user.uid !== current?.uid) removeCachedProfile(user.uid);
     profileGeneration++;
@@ -279,7 +298,22 @@ function updateAuthUI() {
     document.getElementById("guestAuth").onclick = () => { guestMode = true; updateStatus(); window.dispatchEvent(new Event("nutrition-auth-changed")); };
     return;
   }
-  if (user) { panel.innerHTML = `<b>${user.email || 'Аккаунт подключён'}</b><p class="hello">Ваши данные синхронизируются с личным аккаунтом.</p><button class="secondary" type="button" id="signOutButton">Выйти</button>`; document.getElementById("signOutButton").onclick = () => window.firebaseSignOut(); return; }
+  if (user) {
+    const verification = user.email && !user.emailVerified ? '<p class="hello" id="emailVerificationMessage">Подтвердите email по ссылке из письма, чтобы завершить регистрацию.</p><button class="secondary" type="button" id="resendEmailVerification">Отправить письмо повторно</button><button class="link" type="button" id="checkEmailVerification">Я подтвердил email</button>' : '<p class="hello">Ваши данные синхронизируются с личным аккаунтом.</p>';
+    panel.innerHTML = `<b>${user.email || 'Аккаунт подключён'}</b>${verification}<button class="secondary" type="button" id="signOutButton">Выйти</button>`;
+    document.getElementById("signOutButton").onclick = () => window.firebaseSignOut();
+    if (!user.email || user.emailVerified) return;
+    const message = document.getElementById("emailVerificationMessage");
+    document.getElementById("resendEmailVerification").onclick = () => {
+      message.textContent = "Отправляем письмо…";
+      window.firebaseSendEmailVerification().then(() => { message.textContent = "Письмо отправлено. Проверьте входящие и папку «Спам»."; }).catch(error => { message.textContent = window.getAuthErrorMessage(error); });
+    };
+    document.getElementById("checkEmailVerification").onclick = () => {
+      message.textContent = "Проверяем подтверждение…";
+      window.firebaseRefreshEmailVerification().then(verified => { if (!verified) message.textContent = "Email пока не подтверждён. Откройте ссылку из письма и попробуйте снова."; }).catch(error => { message.textContent = window.getAuthErrorMessage(error); });
+    };
+    return;
+  }
   panel.innerHTML = '<b>Синхронизация данных</b><p class="hello" id="authMessage">Войдите через email и пароль или Google, чтобы сохранять данные в личном аккаунте. До входа приложение работает как гость.</p><form id="emailAuthForm"><label class="field">Email<input id="emailAuthEmail" type="email" autocomplete="email" inputmode="email" required></label><label class="field">Пароль<input id="emailAuthPassword" type="password" autocomplete="current-password" minlength="6" required></label><button class="primary" type="submit" id="emailSignIn">Войти по email</button><button class="secondary" type="button" id="emailRegister">Создать аккаунт</button><button class="link" type="button" id="passwordReset">Восстановить пароль</button></form>' + (googleAuthReady ? '<button class="secondary" type="button" id="googleSignIn">Войти через Google</button>' : '');
   const message = document.getElementById("authMessage");
   const form = document.getElementById("emailAuthForm");
