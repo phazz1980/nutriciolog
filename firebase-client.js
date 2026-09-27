@@ -13,7 +13,7 @@ const googleAuthReady = true;
 let db, user = null;
 let authState = configured ? "loading" : "ready";
 let initialization = null, signInAttempt = null, guestMode = false;
-let startGoogleSignIn, startEmailSignIn, startEmailRegistration, startPasswordReset, startEmailVerification, authSdkCurrentUser;
+let startGoogleSignIn, startEmailSignIn, startEmailRegistration, startPasswordReset, startEmailVerification, startEmailLinking, authSdkCurrentUser;
 let sdkAttempt = 0;
 let appModuleFailed = false;
 let authMessage = "";
@@ -98,6 +98,9 @@ window.getAuthErrorMessage = error => ({
   "auth/wrong-password": "Неверный пароль.",
   "auth/email-already-in-use": "Этот email уже зарегистрирован. Войдите или восстановите пароль.",
   "auth/weak-password": "Пароль должен содержать не менее 6 символов.",
+  "auth/credential-already-in-use": "Этот email уже связан с другим аккаунтом. Войдите в него по email отдельно.",
+  "auth/provider-already-linked": "Вход по email уже настроен для этого аккаунта.",
+  "auth/requires-recent-login": "Для создания пароля войдите через Google ещё раз и повторите действие.",
   "auth/too-many-requests": "Слишком много попыток. Подождите немного и попробуйте снова.",
 }[error?.code] || "Не удалось выполнить вход. Попробуйте ещё раз.");
 
@@ -182,6 +185,13 @@ window.firebaseRefreshEmailVerification = async () => {
   window.dispatchEvent(new Event("nutrition-auth-changed"));
   return Boolean(user?.emailVerified);
 };
+window.firebaseLinkEmailPassword = password => startEmailAttempt(() => startEmailLinking(user.email, password)).then(async credential => {
+  await credential.user.reload();
+  user = authSdkCurrentUser();
+  updateStatus();
+  window.dispatchEvent(new Event("nutrition-auth-changed"));
+  return user;
+});
 
 async function loadProfile() {
   await waitForAccount();
@@ -228,6 +238,7 @@ async function connectFirebase() {
   startEmailRegistration = (email, password) => authSdk.createUserWithEmailAndPassword(auth, email, password);
   startPasswordReset = email => authSdk.sendPasswordResetEmail(auth, email);
   startEmailVerification = account => authSdk.sendEmailVerification(account);
+  startEmailLinking = (email, password) => authSdk.linkWithCredential(auth.currentUser, authSdk.EmailAuthProvider.credential(email, password));
   await new Promise((resolve, reject) => authSdk.onAuthStateChanged(auth, current => {
     if (user?.uid && user.uid !== current?.uid) removeCachedProfile(user.uid);
     profileGeneration++;
@@ -300,8 +311,22 @@ function updateAuthUI() {
   }
   if (user) {
     const verification = user.email && !user.emailVerified ? '<p class="hello" id="emailVerificationMessage">Подтвердите email по ссылке из письма, чтобы завершить регистрацию.</p><button class="secondary" type="button" id="resendEmailVerification">Отправить письмо повторно</button><button class="link" type="button" id="checkEmailVerification">Я подтвердил email</button>' : '<p class="hello">Ваши данные синхронизируются с личным аккаунтом.</p>';
-    panel.innerHTML = `<b>${user.email || 'Аккаунт подключён'}</b>${verification}<button class="secondary" type="button" id="signOutButton">Выйти</button>`;
+    const providers = user.providerData.map(provider => provider.providerId);
+    const canAddPassword = user.email && providers.includes("google.com") && !providers.includes("password");
+    const passwordLinking = canAddPassword ? '<form id="linkEmailPasswordForm"><p class="hello">Чтобы входить без Google, создайте пароль для этого же email. Данные и аккаунт сохранятся.</p><label class="field">Новый пароль<input id="linkEmailPassword" type="password" autocomplete="new-password" minlength="6" required></label><button class="secondary" type="submit">Создать пароль для входа</button><p class="hello" id="linkEmailPasswordMessage"></p></form>' : '';
+    panel.innerHTML = `<b>${user.email || 'Аккаунт подключён'}</b>${verification}${passwordLinking}<button class="secondary" type="button" id="signOutButton">Выйти</button>`;
     document.getElementById("signOutButton").onclick = () => window.firebaseSignOut();
+    if (canAddPassword) {
+      const form = document.getElementById("linkEmailPasswordForm");
+      const password = document.getElementById("linkEmailPassword");
+      const message = document.getElementById("linkEmailPasswordMessage");
+      form.onsubmit = event => {
+        event.preventDefault();
+        if (!form.reportValidity()) return;
+        message.textContent = "Создаём пароль…";
+        window.firebaseLinkEmailPassword(password.value).then(() => { message.textContent = "Пароль создан. Теперь можно войти по email без Google."; }).catch(error => { message.textContent = window.getAuthErrorMessage(error); });
+      };
+    }
     if (!user.email || user.emailVerified) return;
     const message = document.getElementById("emailVerificationMessage");
     document.getElementById("resendEmailVerification").onclick = () => {
