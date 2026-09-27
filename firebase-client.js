@@ -13,7 +13,7 @@ const googleAuthReady = true;
 let db, user = null;
 let authState = configured ? "loading" : "ready";
 let initialization = null, signInAttempt = null, guestMode = false;
-let startGoogleSignIn;
+let startGoogleSignIn, startEmailSignIn, startEmailRegistration, startPasswordReset;
 let sdkAttempt = 0;
 let appModuleFailed = false;
 let authMessage = "";
@@ -83,7 +83,7 @@ function refreshAccountProfile(uid) {
 function authError(code) { return Object.assign(new Error(code), { code }); }
 
 window.getAuthErrorMessage = error => ({
-  "auth/network-request-failed": "Не удалось связаться с Google. Проверьте интернет и повторите вход.",
+  "auth/network-request-failed": "Не удалось связаться с сервисом входа. Проверьте интернет и повторите действие.",
   "auth/timeout": "Ответ сервиса задерживается. Проверьте интернет и попробуйте ещё раз.",
   "auth/loading": "Аккаунт ещё загружается. Подождите немного и повторите действие.",
   "auth/unavailable": "Сервис входа не загрузился. Повторите подключение в профиле.",
@@ -91,8 +91,15 @@ window.getAuthErrorMessage = error => ({
   "auth/popup-closed-by-user": "Вход не завершён. Если окно было пустым, проверьте сеть или откройте сайт в Safari/Chrome и повторите вход.",
   "auth/cancelled-popup-request": "Уже открыто другое окно входа. Завершите вход в нём.",
   "auth/unauthorized-domain": "Для этого адреса сайта не настроен вход. Обратитесь к администратору.",
-  "auth/operation-not-allowed": "Вход через Google пока не настроен.",
-}[error?.code] || "Не удалось войти через Google. Попробуйте ещё раз или откройте сайт в Safari/Chrome.");
+  "auth/operation-not-allowed": "Этот способ входа пока не включён в Firebase.",
+  "auth/invalid-email": "Проверьте адрес электронной почты.",
+  "auth/invalid-credential": "Неверный email или пароль.",
+  "auth/user-not-found": "Аккаунт с таким email не найден.",
+  "auth/wrong-password": "Неверный пароль.",
+  "auth/email-already-in-use": "Этот email уже зарегистрирован. Войдите или восстановите пароль.",
+  "auth/weak-password": "Пароль должен содержать не менее 6 символов.",
+  "auth/too-many-requests": "Слишком много попыток. Подождите немного и попробуйте снова.",
+}[error?.code] || "Не удалось выполнить вход. Попробуйте ещё раз.");
 
 function withAuthTimeout(promise, code = "auth/timeout") {
   let timer;
@@ -136,6 +143,30 @@ window.firebaseSignInWithGoogle = () => {
   return signInAttempt;
 };
 
+function startEmailAttempt(action) {
+  if (signInAttempt) return signInAttempt;
+  if (authState !== "ready") return Promise.reject(authError(authState === "loading" ? "auth/loading" : "auth/unavailable"));
+  if (navigator.onLine === false) return Promise.reject(authError("auth/network-request-failed"));
+  authMessage = "";
+  signInAttempt = Promise.resolve(action()).catch(error => {
+    authMessage = window.getAuthErrorMessage(error);
+    throw error;
+  }).finally(() => {
+    signInAttempt = null;
+    updateStatus();
+  });
+  updateStatus();
+  return signInAttempt;
+}
+
+window.firebaseSignInWithEmail = (email, password) => startEmailAttempt(() => startEmailSignIn(email, password));
+window.firebaseRegisterWithEmail = (email, password) => startEmailAttempt(() => startEmailRegistration(email, password));
+window.firebaseSendPasswordReset = email => {
+  if (authState !== "ready" || !startPasswordReset) return Promise.reject(authError(authState === "loading" ? "auth/loading" : "auth/unavailable"));
+  if (navigator.onLine === false) return Promise.reject(authError("auth/network-request-failed"));
+  return startPasswordReset(email);
+};
+
 async function loadProfile() {
   await waitForAccount();
   if (!configured || !user || !db) {
@@ -175,8 +206,9 @@ async function connectFirebase() {
   await authSdk.setPersistence(auth, authSdk.browserLocalPersistence).catch(() => {});
   startGoogleSignIn = () => authSdk.signInWithPopup(auth, new authSdk.GoogleAuthProvider());
   window.firebaseSignOut = () => authSdk.signOut(auth);
-  window.firebaseSignInWithEmail = (email, password) => authSdk.signInWithEmailAndPassword(auth, email, password);
-  window.firebaseRegisterWithEmail = (email, password) => authSdk.createUserWithEmailAndPassword(auth, email, password);
+  startEmailSignIn = (email, password) => authSdk.signInWithEmailAndPassword(auth, email, password);
+  startEmailRegistration = (email, password) => authSdk.createUserWithEmailAndPassword(auth, email, password);
+  startPasswordReset = email => authSdk.sendPasswordResetEmail(auth, email);
   await new Promise((resolve, reject) => authSdk.onAuthStateChanged(auth, current => {
     if (user?.uid && user.uid !== current?.uid) removeCachedProfile(user.uid);
     profileGeneration++;
@@ -247,13 +279,38 @@ function updateAuthUI() {
     document.getElementById("guestAuth").onclick = () => { guestMode = true; updateStatus(); window.dispatchEvent(new Event("nutrition-auth-changed")); };
     return;
   }
-  if (!googleAuthReady) { panel.innerHTML = '<b>Гостевой режим</b><p class="hello">Firebase подключён, но Google-вход ещё не активирован. Пока данные остаются на этом устройстве.</p><button class="secondary" type="button" disabled>Google-вход ожидает настройки</button>'; return; }
   if (user) { panel.innerHTML = `<b>${user.email || 'Аккаунт подключён'}</b><p class="hello">Ваши данные синхронизируются с личным аккаунтом.</p><button class="secondary" type="button" id="signOutButton">Выйти</button>`; document.getElementById("signOutButton").onclick = () => window.firebaseSignOut(); return; }
-  panel.innerHTML = '<b>Синхронизация данных</b><p class="hello">Войдите через Google, чтобы сохранять данные в личном аккаунте. До входа приложение работает как гость.</p><button class="primary" type="button" id="googleSignIn">Войти через Google</button>';
+  panel.innerHTML = '<b>Синхронизация данных</b><p class="hello" id="authMessage">Войдите через email и пароль или Google, чтобы сохранять данные в личном аккаунте. До входа приложение работает как гость.</p><form id="emailAuthForm"><label class="field">Email<input id="emailAuthEmail" type="email" autocomplete="email" inputmode="email" required></label><label class="field">Пароль<input id="emailAuthPassword" type="password" autocomplete="current-password" minlength="6" required></label><button class="primary" type="submit" id="emailSignIn">Войти по email</button><button class="secondary" type="button" id="emailRegister">Создать аккаунт</button><button class="link" type="button" id="passwordReset">Восстановить пароль</button></form>' + (googleAuthReady ? '<button class="secondary" type="button" id="googleSignIn">Войти через Google</button>' : '');
+  const message = document.getElementById("authMessage");
+  const form = document.getElementById("emailAuthForm");
+  const email = document.getElementById("emailAuthEmail");
+  const password = document.getElementById("emailAuthPassword");
+  const setMessage = text => { message.textContent = text; };
+  const getEmail = () => {
+    if (!email.checkValidity()) { email.reportValidity(); return null; }
+    return email.value.trim();
+  };
+  form.onsubmit = event => {
+    event.preventDefault();
+    if (!form.reportValidity()) return;
+    setMessage("Выполняем вход…");
+    window.firebaseSignInWithEmail(email.value.trim(), password.value).catch(error => setMessage(window.getAuthErrorMessage(error)));
+  };
+  document.getElementById("emailRegister").onclick = () => {
+    if (!form.reportValidity()) return;
+    setMessage("Создаём аккаунт…");
+    window.firebaseRegisterWithEmail(email.value.trim(), password.value).catch(error => setMessage(window.getAuthErrorMessage(error)));
+  };
+  document.getElementById("passwordReset").onclick = () => {
+    const address = getEmail(); if (!address) return;
+    setMessage("Отправляем письмо для восстановления…");
+    window.firebaseSendPasswordReset(address).then(() => setMessage("Письмо для восстановления пароля отправлено. Проверьте почту.")).catch(error => setMessage(window.getAuthErrorMessage(error)));
+  };
+  if (!googleAuthReady) return;
   const button = document.getElementById("googleSignIn");
   button.disabled = Boolean(signInAttempt);
   button.textContent = signInAttempt ? "Ожидаем вход через Google…" : "Войти через Google";
-  if (authMessage) panel.querySelector('p').textContent = authMessage;
+  if (authMessage) message.textContent = authMessage;
   button.onclick = () => window.firebaseSignInWithGoogle().catch(error => { authMessage = window.getAuthErrorMessage(error); updateStatus(); });
 }
 
