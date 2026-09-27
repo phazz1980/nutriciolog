@@ -20,10 +20,11 @@ let voiceCancelled=false;window.toggleVoice=function(){if(!Recognition){setVoice
 
 function setAiDebug(text){const panel=document.getElementById('aiDebug');if(!panel)return;panel.textContent=`Отладка: ${text}`;panel.style.display='block'}
 window.askAI=async function(e){e.preventDefault();const text=question.value.trim();if(!text)return;const token=await getAiToken();if(token===undefined)return;if(!token){chatStatus.textContent='Войдите через Google в профиле, чтобы воспользоваться ИИ.';show('profile');return}const before=chatlog.children.length;chatlog.insertAdjacentHTML('beforeend','<div class="bubble user"></div>');chatlog.lastElementChild.textContent=text;question.value='';chatStatus.textContent='Формирую ответ…';setAiDebug('запрос отправлен');try{const r=await requestAiAdvice({method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({message:text,image:selectedPhoto})});const d=await r.json();if(!r.ok){setAiDebug(`Worker ответил HTTP ${r.status}`);throw new Error(d.error||'Ошибка сервиса')}setAiDebug('Worker ответил успешно');chatlog.insertAdjacentHTML('beforeend','<div class="bubble"></div>');chatlog.lastElementChild.textContent=d.advice;chatStatus.textContent='Ответ носит справочный характер.';if(d.proposedProducts)await showProductProposals(d.proposedProducts);if(d.proposedMeal)showMealProposal(d.proposedMeal);removePhoto();if(voiceOn&&chatlog.children.length>before&&'speechSynthesis'in window){speechSynthesis.cancel();const utterance=new SpeechSynthesisUtterance(d.advice);utterance.lang='ru-RU';speechSynthesis.speak(utterance)}}catch(err){const status=document.getElementById('aiDebug')?.textContent||'';if(!status.includes('HTTP'))setAiDebug('ошибка запроса');chatStatus.textContent='Не удалось получить ответ: '+err.message}}
-const APP_VERSION='v0.2.15';const RELEASE_DATE='27 сентября 2026';const defaultProfile={name:'Анна',age:27,height:165,weight:65.4,targetWeight:62,goal:'Похудение',calories:1800};let currentProfile={...defaultProfile};let currentAccount={};let profileNameReady=false;let profileNameFallbackTimer;let profileLoadVersion=0;
+const APP_VERSION='v0.2.17';const RELEASE_DATE='27 сентября 2026';const defaultProfile={name:'Анна',age:27,height:165,weight:65.4,targetWeight:62,goal:'Похудение',calories:1800};let currentProfile={...defaultProfile};let currentAccount={};let profileNameReady=false;let profileNameFallbackTimer;let profileLoadVersion=0;
 function formatNumber(value){return Number(value).toLocaleString('ru-RU',{maximumFractionDigits:1})}
 function firstName(name){return String(name||'').trim().split(/\s+/)[0]||''}
 function renderProfile(){document.getElementById('profileName').textContent=profileNameReady?currentProfile.name:'Загружаем профиль…';const avatar=document.getElementById('profileAvatar');avatar.replaceChildren();if(currentAccount.photoUrl){const photo=document.createElement('img');photo.src=currentAccount.photoUrl;photo.alt='Фото профиля Google';photo.referrerPolicy='no-referrer';photo.style.cssText='width:100%;height:100%;object-fit:cover;border-radius:50%';avatar.append(photo)}else avatar.textContent='🌿';document.getElementById('profileSummary').textContent=` · ${currentProfile.age} лет · ${formatNumber(currentProfile.height)} см · ${formatNumber(currentProfile.weight)} кг`;document.getElementById('profileGoal').textContent=currentProfile.goal;document.getElementById('profileRate').textContent=`Цель: ${formatNumber(currentProfile.targetWeight)} кг`;document.getElementById('profileCalories').textContent=`${formatNumber(currentProfile.calories)} ккал`;document.getElementById('releaseInfo').textContent=`Версия ${APP_VERSION} · ${RELEASE_DATE}`}
+const renderProfileWithVersion=renderProfile;renderProfile=()=>{renderProfileWithVersion();document.getElementById('releaseInfo').textContent=APP_VERSION};
 function shouldUseAccountName(saved,account){return Boolean(firstName(account.name))&&(!saved||!saved.name||saved.name===defaultProfile.name)}
 function applyProfile(saved,account){currentAccount=account;currentProfile={...defaultProfile,...(saved||{})};if(shouldUseAccountName(saved,account))currentProfile.name=firstName(account.name);profileNameReady=Boolean(firstName(account.name))||Boolean(saved?.name&&saved.name!==defaultProfile.name);if(profileNameReady)clearTimeout(profileNameFallbackTimer);renderProfile();window.renderNutrition?.()}
 async function loadProfile(){if(!window.nutritionStore)return;const version=++profileLoadVersion;let saved=null;try{saved=await window.nutritionStore.loadProfile()}catch{}if(version!==profileLoadVersion)return;applyProfile(saved,window.nutritionStore.getAccountProfileDefaults())}
@@ -212,7 +213,7 @@ const manualPhotoInput=document.createElement('input');manualPhotoInput.id='manu
 let aiServiceError='',aiTokenError='',aiRequests=0;
 function renderAiAvailability(){
   const auth=window.getFirebaseAuthStatus?.();
-  const reason=navigator.onLine===false?'Нет интернета — ИИ недоступен.':!auth||auth.state==='loading'?'Подключаем аккаунт — ИИ пока недоступен.':auth.state==='error'?'Сервис входа недоступен. Повторите подключение в профиле.':!auth.signedIn?'Для ИИ нужен вход через Google.':aiTokenError||aiServiceError;
+  const reason=navigator.onLine===false?'Нет интернета — ИИ недоступен.':!auth||auth.state==='loading'?'Подключаем аккаунт — ИИ пока недоступен.':auth.state==='error'?'Сервис входа недоступен. Повторите подключение в профиле.':!auth.signedIn?'Для ИИ нужен вход в аккаунт.':aiTokenError||aiServiceError;
   const buttons=[document.getElementById('calculateMealButton'),document.querySelector('#assistant .send'),document.querySelector('[aria-label="Распознать блюдо по фото"]')];
   for(const button of buttons){
     if(!button)continue;
@@ -229,11 +230,19 @@ function renderAiAvailability(){
   }
 }
 window.setAiTokenError=message=>{aiTokenError=message;renderAiAvailability()};
+function logAiResponse(response){
+  response.clone().text().then(body=>{
+    let payload=body;
+    try{payload=JSON.parse(body)}catch{}
+    console.info('[ИИ] Ответ Worker', {status:response.status,ok:response.ok,payload});
+  }).catch(()=>console.info('[ИИ] Получен ответ Worker', {status:response.status,ok:response.ok}));
+}
 async function requestAiAdvice(options){
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),60000);
   aiRequests++;renderAiAvailability();
   try{
     const response=await fetch(AI_ENDPOINT,{...options,signal:controller.signal});
+    logAiResponse(response);
     if(response.ok)aiServiceError='';
     else if(response.status===401||response.status===403)aiServiceError='Не удалось подтвердить доступ к ИИ. Повторите вход в профиле.';
     else if(response.status===429||response.status>=500)aiServiceError='ИИ временно недоступен. Можно повторить запрос позже.';
@@ -390,7 +399,7 @@ function showAiResponseDiagnostic(rawResponse){
 
 window.askAI=async function(event){
   event.preventDefault();const text=question.value.trim();if(!text)return;
-  const token=await getAiToken();if(token===undefined)return;if(!token){chatStatus.textContent='Войдите через Google в профиле, чтобы воспользоваться ИИ.';show('profile');return}
+  const token=await getAiToken();if(token===undefined)return;if(!token){chatStatus.textContent='Войдите в аккаунт в профиле, чтобы воспользоваться ИИ.';show('profile');return}
   const before=chatlog.children.length;document.getElementById('aiResponseDiagnostic')?.remove();chatlog.insertAdjacentHTML('beforeend','<div class="bubble user"></div>');chatlog.lastElementChild.textContent=text;question.value='';chatStatus.textContent='Формирую ответ…';setAiDebug('запрос отправлен');
   try{
     const response=await requestAiAdvice({method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({message:text,image:selectedPhoto})});
