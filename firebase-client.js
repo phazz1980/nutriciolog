@@ -485,7 +485,7 @@ async function loadWeightEntries() {
 window.nutritionStore = {
   saveProfile: profile => save("profile", "main", profile),
   loadProfile,
-  getAccountProfileDefaults: () => ({ uid: user?.uid || "", name: user?.displayName || "", email: user?.email || "", photoUrl: user?.photoURL || "" }),
+  getAccountProfileDefaults: () => ({ uid: user?.uid || "", name: user?.displayName || "", email: user?.email || "", photoUrl: "" }),
   saveDayPlan: plan => save("dayPlans", plan.date, plan),
   saveWaterLog: log => save("waterLogs", log.date, log),
   loadWaterLog,
