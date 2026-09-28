@@ -462,8 +462,9 @@ async function recognizeManualMealPhoto(file){
     const answer=String(data.advice||'').trim();
     if(!answer)throw new Error('ИИ не вернул результат распознавания');
     const normalized=answer.toLowerCase();
-    const title=normalized==='это не еда.'||normalized==='это не еда'||normalized==='не удалось распознать блюдо.'||normalized==='не удалось распознать блюдо'?'Распознавание фото':'Результат распознавания';
-    showPhotoRecognitionDialog(answer,title);
+    const isNotFood=normalized==='это не еда.'||normalized==='это не еда';
+    const title=isNotFood||normalized==='не удалось распознать блюдо.'||normalized==='не удалось распознать блюдо'?'Распознавание фото':'Результат распознавания';
+    showPhotoRecognitionDialog(isNotFood?'🪨 Это не еда.':answer,title);
   }catch(error){toast(`Не удалось распознать фото: ${error.message}`)}
   finally{manualPhotoInput.value='';manualPhotoButton.textContent='📷';manualPhotoButton.disabled=false}
 }
