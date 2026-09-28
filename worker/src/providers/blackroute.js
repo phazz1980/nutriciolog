@@ -28,8 +28,10 @@ export function createBlackrouteProvider(apiKey, model = "deepseek-v3.2-maas") {
     let result;
     try { result = JSON.parse(content.replace(/^```(?:json)?\s*|\s*```$/g, "").trim()); }
     catch { if (image) return { advice: redactDiagnostic(content), proposedMeal: null, proposedProducts: [] }; throw new AiResponseFormatError(content); }
-    if (typeof result?.advice !== "string" || !(result.proposedMeal === null || typeof result.proposedMeal === "object") || !Array.isArray(result.proposedProducts) || result.proposedProducts.length > 8 || result.proposedProducts.some(product => !product || typeof product.title !== "string" || ![product.portion, product.calories, product.protein, product.fat, product.carbs].every(Number.isFinite))) { if (image) return { advice: typeof result?.advice === "string" ? result.advice : redactDiagnostic(content), proposedMeal: null, proposedProducts: [] }; throw new AiResponseFormatError(content); }
-    return result;
+    if (typeof result?.advice !== "string") { if (image) return { advice: redactDiagnostic(content), proposedMeal: null, proposedProducts: [] }; throw new AiResponseFormatError(content); }
+    const validMeal = result.proposedMeal && typeof result.proposedMeal === "object" && typeof result.proposedMeal.title === "string" && Number.isFinite(result.proposedMeal.calories) && typeof result.proposedMeal.mealType === "string";
+    const validProducts = Array.isArray(result.proposedProducts) && result.proposedProducts.length <= 8 && result.proposedProducts.every(product => product && typeof product.title === "string" && [product.portion, product.calories, product.protein, product.fat, product.carbs].every(Number.isFinite));
+    return { advice: result.advice, proposedMeal: validMeal ? result.proposedMeal : null, proposedProducts: validProducts ? result.proposedProducts : [] };
   };
   return {
     supportsVision,
