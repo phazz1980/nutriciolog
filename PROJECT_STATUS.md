@@ -34,7 +34,7 @@
 - При невалидном JSON от Blackroute для фото Worker возвращает исходный текст в `advice`, а не 502.
 - Предложение ИИ сохраняется только после явного подтверждения пользователя.
 - Фото отправляется только в рамках запроса и не сохраняется в Firebase.
-- Worker настроен на Blackroute: для текста использует `gemini-3-flash-preview`, а для запросов с фото — `gemini-2.5-flash`; секрет `BLACKROUTE_API_KEY` хранится только в Cloudflare Worker Secrets.
+- Worker настроен на Blackroute: для текста использует `deepseek-v3.2-maas`, а для запросов с фото — `gemini-2.5-flash`; секрет `BLACKROUTE_API_KEY` хранится только в Cloudflare Worker Secrets.
 - Ограниченный CORS Worker: `https://nutriciolog.pages.dev` и `https://nutriciolog-x20.website.yandexcloud.net`.
 - Публичные документы OAuth: `privacy.html` и `terms.html`.
 - Удалён переключатель моделей в интерфейсе вкладки «Совет» (приложение использует модель по умолчанию на стороне Worker).
