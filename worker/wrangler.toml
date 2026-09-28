@@ -4,7 +4,7 @@ compatibility_date = "2026-09-15"
 
 [vars]
 AI_PROVIDER = "blackroute"
-BLACKROUTE_MODEL = "gemini-3-flash-preview"
+BLACKROUTE_MODEL = "deepseek-v3.2-maas"
 BLACKROUTE_VISION_MODEL = "gemini-2.5-flash"
 
 # Never put BLACKROUTE_API_KEY here or in Git. Add it as a Cloudflare Worker secret.
