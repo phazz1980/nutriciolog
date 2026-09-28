@@ -419,11 +419,14 @@ function showPhotoRecognitionDialog(message,title='Результат распо
   const dialog=document.createElement('div');
   dialog.id='photoRecognitionDialog';
   dialog.className='modal show';
-  dialog.innerHTML='<section class="sheet" role="dialog" aria-modal="true" aria-labelledby="photoRecognitionTitle"><h2 id="photoRecognitionTitle"></h2><p class="hello" style="white-space:pre-line"></p><button class="primary" type="button">ОК</button></section>';
+  const match=String(message||'').trim().match(/^([^\r\n]+)\r?\nБ:\s*([\d.,]+)\s*г\s*·\s*Ж:\s*([\d.,]+)\s*г\s*·\s*У:\s*([\d.,]+)\s*г$/);
+  dialog.innerHTML='<section class="sheet" role="dialog" aria-modal="true" aria-labelledby="photoRecognitionTitle"><h2 id="photoRecognitionTitle"></h2><p class="hello" style="white-space:pre-line"></p><div class="photo-add-controls" hidden><label class="field">Приём пищи<select><option>Завтрак</option><option>Обед</option><option>Ужин</option><option selected>Перекус</option></select></label><label class="field">Когда добавить<select><option value="today">Сегодня</option><option value="tomorrow">Завтра</option></select></label><button class="primary" type="button">Добавить</button></div><button class="link" type="button" style="display:block;margin:14px auto 0">Закрыть</button></section>';
   dialog.querySelector('h2').textContent=title;
   dialog.querySelector('p').textContent=message;
   const close=()=>dialog.remove();
-  dialog.querySelector('button').onclick=close;
+  const [controls,mealType,date,add,closeButton]=[dialog.querySelector('.photo-add-controls'),...dialog.querySelectorAll('select,button')];
+  if(match){controls.hidden=false;add.onclick=()=>{const number=value=>Number(String(value).replace(',','.'));const protein=number(match[2]),fat=number(match[3]),carbs=number(match[4]),entry={id:crypto.randomUUID(),date:dateKeyFor(date.value),mealType:mealType.value,title:match[1].trim(),portion:null,calories:Math.round(protein*4+fat*9+carbs*4),protein,fat,carbs,source:'photo-ai-confirmed'};addDiaryEntryToView(entry);persistUserData('saveDiaryEntry',entry);close();toast(`Блюдо добавлено на ${date.value==='today'?'сегодня':'завтра'}`)}}
+  closeButton.onclick=close;
   dialog.onkeydown=event=>{if(event.key==='Escape')close()};
   document.body.append(dialog);
   dialog.querySelector('button').focus();
