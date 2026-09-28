@@ -18,9 +18,10 @@ function redactDiagnostic(value) {
 
 function recoverAdvice(value) {
   const text = String(value ?? "");
-  const match = text.match(/"advice"\s*:\s*"([\s\S]*?)(?:"\s*(?:,|\}))/);
-  if (!match) return "";
-  return match[1].replace(/\\n/g, "\n").replace(/\\"/g, '"').trim();
+  const start = text.match(/"advice"\s*:\s*"([\s\S]*)$/);
+  if (!start) return "";
+  const closed = start[1].match(/^([\s\S]*?)"\s*(?:,|\})/);
+  return (closed ? closed[1] : start[1]).replace(/\\n/g, "\n").replace(/\\"/g, '"').trim();
 }
 
 export function createBlackrouteProvider(apiKey, model = "deepseek-v3.2-maas") {
