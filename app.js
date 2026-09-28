@@ -414,13 +414,15 @@ window.askAI=async function(event){
 
 let recognizedManualMealEstimate=null;
 
-function showPhotoRecognitionDialog(){
+function showPhotoRecognitionDialog(message,title='Результат распознавания'){
   document.getElementById('photoRecognitionDialog')?.remove();
   const dialog=document.createElement('div');
   dialog.id='photoRecognitionDialog';
   dialog.className='modal show';
-  dialog.innerHTML='<section class="sheet" role="dialog" aria-modal="true" aria-labelledby="photoRecognitionTitle"><h2 id="photoRecognitionTitle">Фото распознано</h2><p class="hello">Введите размер порции в граммах. После этого приложение рассчитает калории и БЖУ.</p><button class="primary" type="button">ОК</button></section>';
-  const close=()=>{dialog.remove();portion.focus()};
+  dialog.innerHTML='<section class="sheet" role="dialog" aria-modal="true" aria-labelledby="photoRecognitionTitle"><h2 id="photoRecognitionTitle"></h2><p class="hello" style="white-space:pre-line"></p><button class="primary" type="button">ОК</button></section>';
+  dialog.querySelector('h2').textContent=title;
+  dialog.querySelector('p').textContent=message;
+  const close=()=>dialog.remove();
   dialog.querySelector('button').onclick=close;
   dialog.onkeydown=event=>{if(event.key==='Escape')close()};
   document.body.append(dialog);
@@ -453,23 +455,12 @@ async function recognizeManualMealPhoto(file){
     const dataUrl=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file)});
     const response=await requestAiAdvice({method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({message:'Распознай блюдо на фотографии. Верни один наиболее заметный продукт или блюдо с ориентировочными калориями, белками, жирами, углеводами и весом порции в граммах. Не сохраняй ничего.',image:{dataUrl,mimeType:file.type}})});
     const data=await response.json();
-    if(!response.ok){showManualPhotoDiagnostic(data.debugResponse);throw new Error(data.error||'Ошибка сервиса')}
-    const estimate=data.proposedProducts?.find(product=>product?.title&&Number.isFinite(Number(product.calories)))||data.proposedMeal;
-    if(!estimate?.title||!Number.isFinite(Number(estimate.calories)))throw new Error('ИИ не смог распознать блюдо');
-    recognizedManualMealEstimate={
-      portion:Math.max(Number(estimate.portion)||100,1),
-      calories:Number(estimate.calories),
-      protein:Number(estimate.protein||0),
-      fat:Number(estimate.fat||0),
-      carbs:Number(estimate.carbs||0),
-    };
-    mealName.value=estimate.title;
-    portion.value='';
-    calories.value='';
-    protein.value='';
-    fat.value='';
-    carbs.value='';
-    showPhotoRecognitionDialog();
+    if(!response.ok){if(typeof data.debugResponse==='string'&&data.debugResponse){showPhotoRecognitionDialog(data.debugResponse,'Ответ ИИ');return}throw new Error(data.error||'Ошибка сервиса')}
+    const answer=String(data.advice||'').trim();
+    if(!answer)throw new Error('ИИ не вернул результат распознавания');
+    const normalized=answer.toLowerCase();
+    const title=normalized==='это не еда.'||normalized==='это не еда'||normalized==='не удалось распознать блюдо.'||normalized==='не удалось распознать блюдо'?'Распознавание фото':'Результат распознавания';
+    showPhotoRecognitionDialog(answer,title);
   }catch(error){toast(`Не удалось распознать фото: ${error.message}`)}
   finally{manualPhotoInput.value='';manualPhotoButton.textContent='📷';manualPhotoButton.disabled=false}
 }
