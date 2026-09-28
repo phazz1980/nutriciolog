@@ -20,7 +20,7 @@ let voiceCancelled=false;window.toggleVoice=function(){if(!Recognition){setVoice
 
 function setAiDebug(text){const panel=document.getElementById('aiDebug');if(!panel)return;panel.textContent=`Отладка: ${text}`;panel.style.display='block'}
 window.askAI=async function(e){e.preventDefault();const text=question.value.trim();if(!text)return;const token=await getAiToken();if(token===undefined)return;if(!token){chatStatus.textContent='Войдите через Google в профиле, чтобы воспользоваться ИИ.';show('profile');return}const before=chatlog.children.length;chatlog.insertAdjacentHTML('beforeend','<div class="bubble user"></div>');chatlog.lastElementChild.textContent=text;question.value='';chatStatus.textContent='Формирую ответ…';setAiDebug('запрос отправлен');try{const r=await requestAiAdvice({method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({message:text,image:selectedPhoto})});const d=await r.json();if(!r.ok){setAiDebug(`Worker ответил HTTP ${r.status}`);throw new Error(d.error||'Ошибка сервиса')}setAiDebug('Worker ответил успешно');chatlog.insertAdjacentHTML('beforeend','<div class="bubble"></div>');chatlog.lastElementChild.textContent=d.advice;chatStatus.textContent='Ответ носит справочный характер.';if(d.proposedProducts)await showProductProposals(d.proposedProducts);if(d.proposedMeal)showMealProposal(d.proposedMeal);removePhoto();if(voiceOn&&chatlog.children.length>before&&'speechSynthesis'in window){speechSynthesis.cancel();const utterance=new SpeechSynthesisUtterance(d.advice);utterance.lang='ru-RU';speechSynthesis.speak(utterance)}}catch(err){const status=document.getElementById('aiDebug')?.textContent||'';if(!status.includes('HTTP'))setAiDebug('ошибка запроса');chatStatus.textContent='Не удалось получить ответ: '+err.message}}
-const APP_VERSION='v0.2.20';const RELEASE_DATE='27 сентября 2026';const defaultProfile={name:'Анна',age:27,height:165,weight:65.4,targetWeight:62,goal:'Похудение',calories:1800};let currentProfile={...defaultProfile};let currentAccount={};let profileNameReady=false;let profileNameFallbackTimer;let profileLoadVersion=0;
+const APP_VERSION='v0.2.21';const RELEASE_DATE='28 сентября 2026';const defaultProfile={name:'Анна',age:27,height:165,weight:65.4,targetWeight:62,goal:'Похудение',calories:1800};let currentProfile={...defaultProfile};let currentAccount={};let profileNameReady=false;let profileNameFallbackTimer;let profileLoadVersion=0;
 function formatNumber(value){return Number(value).toLocaleString('ru-RU',{maximumFractionDigits:1})}
 function firstName(name){return String(name||'').trim().split(/\s+/)[0]||''}
 function renderProfile(){document.getElementById('profileName').textContent=profileNameReady?currentProfile.name:'Загружаем профиль…';const avatar=document.getElementById('profileAvatar');avatar.replaceChildren();if(currentAccount.photoUrl){const photo=document.createElement('img');photo.src=currentAccount.photoUrl;photo.alt='Фото профиля Google';photo.referrerPolicy='no-referrer';photo.style.cssText='width:100%;height:100%;object-fit:cover;border-radius:50%';avatar.append(photo)}else avatar.textContent='🌿';document.getElementById('profileSummary').textContent=` · ${currentProfile.age} лет · ${formatNumber(currentProfile.height)} см · ${formatNumber(currentProfile.weight)} кг`;document.getElementById('profileGoal').textContent=currentProfile.goal;document.getElementById('profileRate').textContent=`Цель: ${formatNumber(currentProfile.targetWeight)} кг`;document.getElementById('profileCalories').textContent=`${formatNumber(currentProfile.calories)} ккал`;document.getElementById('releaseInfo').textContent=`Версия ${APP_VERSION} · ${RELEASE_DATE}`}
@@ -115,6 +115,125 @@ const historyAddButton=document.querySelector('#diary .top .secondary:last-child
 document.getElementById('dietHistoryButton')?.remove();const diaryTitle=document.querySelector('#diary .top h1'),diaryTitleWrap=diaryTitle?.parentElement,diaryCalendarInput=document.createElement('input');let selectedDiaryDate=dataDateKey();function diaryDateTitle(date){if(date===dataDateKey())return 'Сегодня';if(date===dateKeyFor('tomorrow'))return 'Завтра';return new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long'}).format(new Date(`${date}T00:00:00`))}async function renderDiaryForDate(date){selectedDiaryDate=date;diaryTitle.textContent=diaryDateTitle(date);if(date===dataDateKey()){await loadDiary();return}mealList.replaceChildren();const hint=document.createElement('p');hint.className='hello';hint.textContent='Просмотр сохранённого рациона';mealList.append(hint);try{const entries=await window.nutritionStore?.loadDiaryEntries?.(date)||[];if(!entries.length){const empty=document.createElement('section');empty.className='card';empty.textContent='За этот день записей нет.';mealList.append(empty);return}const total=entries.reduce((sum,entry)=>sum+safeNumber(entry.calories),0),summary=document.createElement('p');summary.className='hello';summary.textContent=`Всего: ${formatNumber(total)} ккал`;mealList.append(summary);const groups=new Map();entries.forEach(entry=>{const type=entry.mealType||'Перекус';if(!groups.has(type))groups.set(type,[]);groups.get(type).push(entry)});['Завтрак','Обед','Ужин','Перекус'].forEach(type=>{const items=groups.get(type);if(!items?.length)return;const card=document.createElement('section');card.className='card';const heading=document.createElement('h2');heading.textContent=`${diaryIcons[type]||'🍽️'} ${type}`;card.append(heading);items.forEach(entry=>{const row=document.createElement('div');row.className='entry';const description=document.createElement('div'),title=document.createElement('b'),details=document.createElement('small'),calories=document.createElement('b');title.textContent=entry.title;details.textContent=`${entry.portion||'—'} ${entry.portionUnit||'г'} · Б ${safeNumber(entry.protein)} · Ж ${safeNumber(entry.fat)} · У ${safeNumber(entry.carbs)}`;calories.textContent=`${formatNumber(safeNumber(entry.calories))} ккал`;description.append(title,details);row.append(description,calories);card.append(row)});mealList.append(card)})}catch{toast('Не удалось загрузить рацион. Попробуйте ещё раз.')}}if(diaryTitle&&diaryTitleWrap&&!document.getElementById('diaryCalendarButton')){diaryTitle.style.display='inline-block';diaryCalendarInput.id='diaryCalendarInput';diaryCalendarInput.type='date';diaryCalendarInput.max=dateKeyFor('tomorrow');diaryCalendarInput.value=dataDateKey();diaryCalendarInput.style.cssText='position:absolute;opacity:0;pointer-events:none;width:1px;height:1px';diaryCalendarInput.onchange=()=>renderDiaryForDate(diaryCalendarInput.value);const calendarButton=document.createElement('button');calendarButton.id='diaryCalendarButton';calendarButton.type='button';calendarButton.className='link';calendarButton.style.cssText='margin-left:8px;font-size:20px;vertical-align:middle';calendarButton.textContent='📅';calendarButton.setAttribute('aria-label','Выбрать дату рациона');calendarButton.onclick=()=>{if(diaryCalendarInput.showPicker)diaryCalendarInput.showPicker();else diaryCalendarInput.click()};diaryTitleWrap.append(calendarButton,diaryCalendarInput)}window.addEventListener('nutrition-auth-changed',()=>renderDiaryForDate(selectedDiaryDate));window.addEventListener('nutritionstore-ready',()=>renderDiaryForDate(selectedDiaryDate));
 Array.from(document.querySelectorAll('#diary .top .secondary')).find(button=>button.textContent.trim()==='✦ С ИИ')?.remove();
 Array.from(document.querySelectorAll('#diary .hello')).find(element=>element.textContent.includes('Добавьте с ИИ:'))?.remove();
+
+// Group entries in native disclosure widgets so each meal can be collapsed without
+// hiding its calorie subtotal.  Keeping the entries in a separate body also makes
+// deletion and subtotal recalculation independent from the heading markup.
+function updateMealGroupSummary(card){
+  if(!card)return;
+  const total=Array.from(card.querySelectorAll('.entry')).reduce((sum,row)=>sum+safeNumber(row.dataset.calories),0);
+  const totalElement=card.querySelector('.meal-group-total');
+  if(totalElement)totalElement.textContent=`${formatNumber(total)} ккал`;
+}
+
+function createMealGroup(type){
+  const card=document.createElement('details');
+  card.className='card meal-group';
+  card.dataset.mealType=type;
+  card.open=true;
+  const summary=document.createElement('summary');
+  const title=document.createElement('span');
+  title.className='meal-group-title';
+  title.textContent=`${diaryIcons[type]||'🍽️'} ${type}`;
+  const total=document.createElement('b');
+  total.className='meal-group-total';
+  total.textContent='0 ккал';
+  summary.append(title,total);
+  const body=document.createElement('div');
+  body.className='meal-group-body';
+  card.append(summary,body);
+  return card;
+}
+
+function createDiaryEntryRow(entry,{deletable=false}={}){
+  const item=document.createElement('div');
+  item.className='entry';
+  item.dataset.entryId=entry.id||'';
+  item.dataset.calories=safeNumber(entry.calories);
+  if(deletable)item.style.cssText='position:relative;padding-right:36px';
+  const description=document.createElement('div');
+  const title=document.createElement('b');
+  title.textContent=entry.title;
+  const details=document.createElement('small');
+  details.textContent=`${entry.portion||'—'} ${entry.portionUnit||'г'} · Б ${safeNumber(entry.protein)} · Ж ${safeNumber(entry.fat)} · У ${safeNumber(entry.carbs)}`;
+  const calories=document.createElement('b');
+  calories.textContent=`${formatNumber(safeNumber(entry.calories))} ккал`;
+  description.append(title,details);
+  item.append(description,calories);
+  if(deletable){
+    const remove=document.createElement('button');
+    remove.type='button';remove.className='link';remove.textContent='×';
+    remove.title=`Удалить ${entry.title}`;remove.setAttribute('aria-label',`Удалить ${entry.title}`);
+    remove.style.cssText='position:absolute;right:0;top:8px;margin:0;padding:0 4px;color:#b44747;font-size:22px;line-height:1;font-weight:700';
+    remove.onclick=event=>{event.preventDefault();event.stopPropagation();window.deleteDiaryEntry(entry.id,item)};
+    item.append(remove);
+  }
+  return item;
+}
+
+function appendEntriesByMeal(list,entries,{deletable=false}={}){
+  const groups=new Map();
+  entries.forEach(entry=>{const type=entry.mealType||'Перекус';if(!groups.has(type))groups.set(type,[]);groups.get(type).push(entry)});
+  mealTypeOrder.forEach(type=>{
+    const items=groups.get(type);if(!items?.length)return;
+    const card=createMealGroup(type),body=card.querySelector('.meal-group-body');
+    items.forEach(entry=>body.append(createDiaryEntryRow(entry,{deletable})));
+    updateMealGroupSummary(card);
+    list.append(card);
+  });
+}
+
+window.addDiaryEntryToView=function(entry){
+  if(entry.date!==dataDateKey())return;
+  entry.id||=crypto.randomUUID();
+  todayNutrition.calories+=safeNumber(entry.calories);todayNutrition.protein+=safeNumber(entry.protein);
+  todayNutrition.fat+=safeNumber(entry.fat);todayNutrition.carbs+=safeNumber(entry.carbs);renderNutrition();
+  const empty=mealList.querySelector('.hello');if(empty?.closest('.card'))empty.closest('.card').remove();
+  const type=entry.mealType||'Перекус';
+  let card=mealList.querySelector(`[data-meal-type="${type}"]`);
+  if(!card){
+    card=createMealGroup(type);
+    const rank=mealTypeRank(type);
+    const next=Array.from(mealList.querySelectorAll('[data-meal-type]')).find(existing=>mealTypeRank(existing.dataset.mealType)>rank);
+    mealList.insertBefore(card,next||null);
+  }
+  card.querySelector('.meal-group-body').append(createDiaryEntryRow(entry,{deletable:true}));
+  updateMealGroupSummary(card);
+};
+
+window.deleteDiaryEntry=async function(id,item){
+  const row=item||mealList.querySelector(`[data-entry-id="${id}"]`);
+  if(!row){toast('Не удалось определить запись для удаления');return}
+  const values={calories:safeNumber(row.dataset.calories),protein:Number((row.textContent.match(/Б\s*([\d.,]+)/)||[,0])[1].replace(',','.')),fat:Number((row.textContent.match(/Ж\s*([\d.,]+)/)||[,0])[1].replace(',','.')),carbs:Number((row.textContent.match(/У\s*([\d.,]+)/)||[,0])[1].replace(',','.'))};
+  const card=row.closest('[data-meal-type]');row.remove();
+  if(card&&!card.querySelector('.entry'))card.remove();else updateMealGroupSummary(card);
+  todayNutrition.calories=Math.max(0,todayNutrition.calories-values.calories);todayNutrition.protein=Math.max(0,todayNutrition.protein-safeNumber(values.protein));todayNutrition.fat=Math.max(0,todayNutrition.fat-safeNumber(values.fat));todayNutrition.carbs=Math.max(0,todayNutrition.carbs-safeNumber(values.carbs));renderNutrition();
+  try{await window.nutritionStore?.deleteDiaryEntry?.(id);toast('Запись удалена из дневника')}catch{await loadDiary();toast('Не удалось сохранить удаление. Попробуйте ещё раз.')}
+};
+
+async function renderDiaryForDate(date){
+  selectedDiaryDate=date;diaryTitle.textContent=diaryDateTitle(date);
+  if(date===dataDateKey()){await loadDiary();return}
+  mealList.replaceChildren();
+  const hint=document.createElement('p');hint.className='hello';hint.textContent='Просмотр сохранённого рациона';mealList.append(hint);
+  try{
+    const entries=await window.nutritionStore?.loadDiaryEntries?.(date)||[];
+    if(!entries.length){const empty=document.createElement('section');empty.className='card';empty.textContent='За этот день записей нет.';mealList.append(empty);return}
+    const total=entries.reduce((sum,entry)=>sum+safeNumber(entry.calories),0),summary=document.createElement('p');summary.className='hello';summary.textContent=`Всего: ${formatNumber(total)} ккал`;mealList.append(summary);
+    appendEntriesByMeal(mealList,entries);
+  }catch{toast('Не удалось загрузить рацион. Попробуйте ещё раз.')}
+}
+
+async function renderDietHistory(date,list,status){
+  list.replaceChildren();status.textContent='Загружаю рацион…';
+  try{
+    const entries=await window.nutritionStore?.loadDiaryEntries?.(date)||[];
+    status.textContent=new Intl.DateTimeFormat('ru-RU',{dateStyle:'long'}).format(new Date(`${date}T00:00:00`));
+    if(!entries.length){const empty=document.createElement('p');empty.className='hello';empty.textContent='За этот день записей нет.';list.append(empty);return}
+    const total=entries.reduce((sum,entry)=>sum+safeNumber(entry.calories),0),summary=document.createElement('p');summary.className='hello';summary.textContent=`Всего: ${formatNumber(total)} ккал`;list.append(summary);
+    appendEntriesByMeal(list,entries);
+  }catch{status.textContent='Не удалось загрузить историю.'}
+}
 
 function clearMealEstimateError(input){
   document.getElementById(`${input.id}Error`)?.remove();
