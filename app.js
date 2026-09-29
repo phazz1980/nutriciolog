@@ -20,7 +20,7 @@ let voiceCancelled=false;window.toggleVoice=function(){if(!Recognition){setVoice
 
 function setAiDebug(text){const panel=document.getElementById('aiDebug');if(!panel)return;panel.textContent=`Отладка: ${text}`;panel.style.display='block'}
 window.askAI=async function(e){e.preventDefault();const text=question.value.trim();if(!text)return;const token=await getAiToken();if(token===undefined)return;if(!token){chatStatus.textContent='Войдите через Google в профиле, чтобы воспользоваться ИИ.';show('profile');return}const before=chatlog.children.length;chatlog.insertAdjacentHTML('beforeend','<div class="bubble user"></div>');chatlog.lastElementChild.textContent=text;question.value='';chatStatus.textContent='Формирую ответ…';setAiDebug('запрос отправлен');try{const r=await requestAiAdvice({method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({message:text,image:selectedPhoto})});const d=await r.json();if(!r.ok){setAiDebug(`Worker ответил HTTP ${r.status}`);throw new Error(d.error||'Ошибка сервиса')}setAiDebug('Worker ответил успешно');chatlog.insertAdjacentHTML('beforeend','<div class="bubble"></div>');chatlog.lastElementChild.textContent=d.advice;chatStatus.textContent='Ответ носит справочный характер.';if(d.proposedProducts)await showProductProposals(d.proposedProducts);if(d.proposedMeal)showMealProposal(d.proposedMeal);removePhoto();if(voiceOn&&chatlog.children.length>before&&'speechSynthesis'in window){speechSynthesis.cancel();const utterance=new SpeechSynthesisUtterance(d.advice);utterance.lang='ru-RU';speechSynthesis.speak(utterance)}}catch(err){const status=document.getElementById('aiDebug')?.textContent||'';if(!status.includes('HTTP'))setAiDebug('ошибка запроса');chatStatus.textContent='Не удалось получить ответ: '+err.message}}
-const APP_VERSION='v0.2.27';const RELEASE_DATE='29 сентября 2026';const defaultProfile={name:'Анна',age:27,height:165,weight:65.4,targetWeight:62,goal:'Похудение',calories:1800};let currentProfile={...defaultProfile};let currentAccount={};let profileNameReady=false;let profileNameFallbackTimer;let profileLoadVersion=0;
+const APP_VERSION='v0.2.29';const RELEASE_DATE='29 сентября 2026';const defaultProfile={name:'Анна',age:27,height:165,weight:65.4,targetWeight:62,goal:'Похудение',calories:1800};let currentProfile={...defaultProfile};let currentAccount={};let profileNameReady=false;let profileNameFallbackTimer;let profileLoadVersion=0;
 function formatNumber(value){return Number(value).toLocaleString('ru-RU',{maximumFractionDigits:1})}
 function firstName(name){return String(name||'').trim().split(/\s+/)[0]||''}
 function renderProfile(){document.getElementById('profileName').textContent=profileNameReady?currentProfile.name:'Загружаем профиль…';const avatar=document.getElementById('profileAvatar');avatar.replaceChildren();if(currentAccount.photoUrl){const photo=document.createElement('img');photo.src=currentAccount.photoUrl;photo.alt='Фото профиля Google';photo.referrerPolicy='no-referrer';photo.style.cssText='width:100%;height:100%;object-fit:cover;border-radius:50%';avatar.append(photo)}else avatar.textContent='🌿';document.getElementById('profileSummary').textContent=` · ${currentProfile.age} лет · ${formatNumber(currentProfile.height)} см · ${formatNumber(currentProfile.weight)} кг`;document.getElementById('profileGoal').textContent=currentProfile.goal;document.getElementById('profileRate').textContent=`Цель: ${formatNumber(currentProfile.targetWeight)} кг`;document.getElementById('profileCalories').textContent=`${formatNumber(currentProfile.calories)} ккал`;document.getElementById('releaseInfo').textContent=`Версия ${APP_VERSION} · ${RELEASE_DATE}`}
@@ -618,20 +618,52 @@ function showManualPhotoDiagnostic(rawResponse){
 
 // The product list belongs to the current user. It is loaded only when the
 // meal field receives focus, then kept in memory for the current session.
-const mealSuggestions=document.createElement('datalist');
+const mealSuggestions=document.createElement('div');
 mealSuggestions.id='mealNameSuggestions';
-document.body.append(mealSuggestions);
-mealNameInput?.setAttribute('list',mealSuggestions.id);
+mealSuggestions.className='meal-suggestions';
+mealSuggestions.setAttribute('role','listbox');
+mealSuggestions.hidden=true;
+mealNameControl.after(mealSuggestions);
+mealNameInput?.setAttribute('aria-controls',mealSuggestions.id);
+mealNameInput?.setAttribute('aria-expanded','false');
 let savedMealProducts=[];
 let savedMealProductsUid='';
 let savedMealProductsLoading=null;
 let savedMealEstimate=null;
+let skipMealSuggestionsOnFocus=false;
 
 function renderMealSuggestions(products){
   mealSuggestions.replaceChildren();
-  [...new Map(products.map(product=>[String(product.title).trim().toLocaleLowerCase('ru-RU'),product])).values()]
+  const query=mealNameInput?.value.trim().toLocaleLowerCase('ru-RU')||'';
+  const matches=[...new Map(products.map(product=>[String(product.title).trim().toLocaleLowerCase('ru-RU'),product])).values()]
+    .filter(product=>!query||product.title.toLocaleLowerCase('ru-RU').includes(query))
     .sort((left,right)=>left.title.localeCompare(right.title,'ru'))
-    .forEach(product=>{const option=document.createElement('option');option.value=product.title.trim();mealSuggestions.append(option)});
+    .slice(0,30);
+  matches.forEach(product=>{
+    const row=document.createElement('div');row.className='meal-suggestion-row';
+    const option=document.createElement('button');option.type='button';option.className='meal-suggestion';option.setAttribute('role','option');option.textContent=product.title.trim();
+    option.onmousedown=event=>event.preventDefault();
+    option.onclick=()=>{mealNameInput.value=product.title.trim();applySavedMealProduct();mealSuggestions.hidden=true;mealNameInput.setAttribute('aria-expanded','false');skipMealSuggestionsOnFocus=true;mealNameInput.focus()};
+    const remove=document.createElement('button');remove.type='button';remove.className='meal-suggestion-delete';remove.textContent='Удалить';remove.setAttribute('aria-label',`Удалить «${product.title.trim()}» из личной базы`);
+    remove.onclick=()=>deleteSavedMealProduct(product);
+    row.append(option,remove);mealSuggestions.append(row);
+  });
+  mealSuggestions.hidden=!matches.length;
+  mealNameInput?.setAttribute('aria-expanded',String(Boolean(matches.length)));
+}
+
+async function deleteSavedMealProduct(product){
+  const title=String(product?.title||'').trim();
+  if(!title||!window.nutritionStore?.deleteProduct){toast('Не удалось определить блюдо для удаления');return}
+  if(!window.confirm(`Удалить «${title}» из личной базы? Записи в дневнике останутся.`))return;
+  try{
+    await window.nutritionStore.deleteProduct(title);
+    const normalized=title.toLocaleLowerCase('ru-RU');
+    savedMealProducts=savedMealProducts.filter(item=>String(item.title||'').trim().toLocaleLowerCase('ru-RU')!==normalized);
+    if(savedMealEstimate?.title===normalized)savedMealEstimate=null;
+    renderMealSuggestions(savedMealProducts);
+    toast('Блюдо удалено из личной базы');
+  }catch{toast('Не удалось удалить блюдо. Проверьте соединение и повторите.')}
 }
 
 async function loadMealSuggestions(){
@@ -667,11 +699,12 @@ function fillSavedMealNutrition(){
   setAutomaticPortionUnit();
 }
 
-mealNameInput?.addEventListener('focus',loadMealSuggestions);
+mealNameInput?.addEventListener('focus',()=>{if(skipMealSuggestionsOnFocus){skipMealSuggestionsOnFocus=false;return}loadMealSuggestions().then(()=>renderMealSuggestions(savedMealProducts))});
 mealNameInput?.addEventListener('change',applySavedMealProduct);
-mealNameInput?.addEventListener('input',()=>{savedMealEstimate=null});
+mealNameInput?.addEventListener('input',()=>{savedMealEstimate=null;renderMealSuggestions(savedMealProducts)});
+mealNameInput?.addEventListener('blur',()=>setTimeout(()=>{mealSuggestions.hidden=true;mealNameInput.setAttribute('aria-expanded','false')},120));
 portion.addEventListener('input',fillSavedMealNutrition);
-window.addEventListener('nutrition-auth-changed',()=>{savedMealProducts=[];savedMealProductsUid='';savedMealEstimate=null;mealSuggestions.replaceChildren()});
+window.addEventListener('nutrition-auth-changed',()=>{savedMealProducts=[];savedMealProductsUid='';savedMealEstimate=null;mealSuggestions.replaceChildren();mealSuggestions.hidden=true});
 
 function showAiCalculationResult({title,portionLabel,calories:resultCalories,protein:resultProtein,fat:resultFat,carbs:resultCarbs,error}){
   document.getElementById('aiCalculationResult')?.remove();
