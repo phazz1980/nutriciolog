@@ -100,3 +100,9 @@
       #modal{align-items:stretch}
       #modal .sheet{width:100%;height:100%;max-height:none;border-radius:0;padding:calc(22px + env(safe-area-inset-top,0px)) 22px calc(22px + env(safe-area-inset-bottom,0px))}
     }
+    @media(max-width:430px){
+      .water{gap:6px}
+      .drops{flex:1;min-width:0;gap:3px;justify-content:space-between}
+      .drop{width:clamp(20px,calc((100% - 21px)/8),29px)}
+      .water>.secondary{flex:0 0 auto;padding:10px}
+    }
