@@ -416,6 +416,23 @@ async function loadProduct(name) {
   return snapshot.exists() ? snapshot.data() : null;
 }
 
+async function listProducts() {
+  await waitForAccount();
+  if (!configured || !user || !db) {
+    const prefix = key("products:");
+    return Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index)).flatMap(storageKey => {
+      if (!storageKey?.startsWith(prefix)) return [];
+      try {
+        const product = JSON.parse(localStorage.getItem(storageKey));
+        return typeof product?.title === "string" && product.title.trim() ? [product] : [];
+      } catch { return []; }
+    });
+  }
+  const { collection, getDocs } = window.__firestore;
+  const snapshot = await getDocs(collection(db, "users", user.uid, "products"));
+  return snapshot.docs.map(document => document.data()).filter(product => typeof product?.title === "string" && product.title.trim());
+}
+
 async function saveProduct(product) {
   const title = String(product?.title || "").trim();
   const normalizedName = normalizeProductName(title);
@@ -508,6 +525,7 @@ window.nutritionStore = {
   loadDiaryEntries,
   loadWeightEntries,
   loadProduct,
+  listProducts,
   saveProduct,
 };
 

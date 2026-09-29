@@ -20,7 +20,7 @@ let voiceCancelled=false;window.toggleVoice=function(){if(!Recognition){setVoice
 
 function setAiDebug(text){const panel=document.getElementById('aiDebug');if(!panel)return;panel.textContent=`Отладка: ${text}`;panel.style.display='block'}
 window.askAI=async function(e){e.preventDefault();const text=question.value.trim();if(!text)return;const token=await getAiToken();if(token===undefined)return;if(!token){chatStatus.textContent='Войдите через Google в профиле, чтобы воспользоваться ИИ.';show('profile');return}const before=chatlog.children.length;chatlog.insertAdjacentHTML('beforeend','<div class="bubble user"></div>');chatlog.lastElementChild.textContent=text;question.value='';chatStatus.textContent='Формирую ответ…';setAiDebug('запрос отправлен');try{const r=await requestAiAdvice({method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({message:text,image:selectedPhoto})});const d=await r.json();if(!r.ok){setAiDebug(`Worker ответил HTTP ${r.status}`);throw new Error(d.error||'Ошибка сервиса')}setAiDebug('Worker ответил успешно');chatlog.insertAdjacentHTML('beforeend','<div class="bubble"></div>');chatlog.lastElementChild.textContent=d.advice;chatStatus.textContent='Ответ носит справочный характер.';if(d.proposedProducts)await showProductProposals(d.proposedProducts);if(d.proposedMeal)showMealProposal(d.proposedMeal);removePhoto();if(voiceOn&&chatlog.children.length>before&&'speechSynthesis'in window){speechSynthesis.cancel();const utterance=new SpeechSynthesisUtterance(d.advice);utterance.lang='ru-RU';speechSynthesis.speak(utterance)}}catch(err){const status=document.getElementById('aiDebug')?.textContent||'';if(!status.includes('HTTP'))setAiDebug('ошибка запроса');chatStatus.textContent='Не удалось получить ответ: '+err.message}}
-const APP_VERSION='v0.2.21';const RELEASE_DATE='28 сентября 2026';const defaultProfile={name:'Анна',age:27,height:165,weight:65.4,targetWeight:62,goal:'Похудение',calories:1800};let currentProfile={...defaultProfile};let currentAccount={};let profileNameReady=false;let profileNameFallbackTimer;let profileLoadVersion=0;
+const APP_VERSION='v0.2.27';const RELEASE_DATE='29 сентября 2026';const defaultProfile={name:'Анна',age:27,height:165,weight:65.4,targetWeight:62,goal:'Похудение',calories:1800};let currentProfile={...defaultProfile};let currentAccount={};let profileNameReady=false;let profileNameFallbackTimer;let profileLoadVersion=0;
 function formatNumber(value){return Number(value).toLocaleString('ru-RU',{maximumFractionDigits:1})}
 function firstName(name){return String(name||'').trim().split(/\s+/)[0]||''}
 function renderProfile(){document.getElementById('profileName').textContent=profileNameReady?currentProfile.name:'Загружаем профиль…';const avatar=document.getElementById('profileAvatar');avatar.replaceChildren();if(currentAccount.photoUrl){const photo=document.createElement('img');photo.src=currentAccount.photoUrl;photo.alt='Фото профиля Google';photo.referrerPolicy='no-referrer';photo.style.cssText='width:100%;height:100%;object-fit:cover;border-radius:50%';avatar.append(photo)}else avatar.textContent='🌿';document.getElementById('profileSummary').textContent=` · ${currentProfile.age} лет · ${formatNumber(currentProfile.height)} см · ${formatNumber(currentProfile.weight)} кг`;document.getElementById('profileGoal').textContent=currentProfile.goal;document.getElementById('profileRate').textContent=`Цель: ${formatNumber(currentProfile.targetWeight)} кг`;document.getElementById('profileCalories').textContent=`${formatNumber(currentProfile.calories)} ккал`;document.getElementById('releaseInfo').textContent=`Версия ${APP_VERSION} · ${RELEASE_DATE}`}
@@ -484,6 +484,14 @@ if(mealNameInput&&manualPhotoButton){
   mealVoiceButton.title='Ввести название голосом';
   mealVoiceButton.setAttribute('aria-label','Ввести название блюда голосом');
   mealNameActions.append(mealVoiceButton);
+  if(nutritionCalculateButton){
+    nutritionCalculateButton.className='secondary meal-name-action meal-calculate-action';
+    nutritionCalculateButton.style.cssText='';
+    nutritionCalculateButton.textContent='✦';
+    nutritionCalculateButton.title='Рассчитать БЖУ с ИИ';
+    nutritionCalculateButton.setAttribute('aria-label','Рассчитать БЖУ с ИИ');
+    mealNameActions.append(nutritionCalculateButton);
+  }
   let mealRecognition=null;
   mealVoiceButton.onclick=()=>{
     if(!Recognition){toast('Голосовой ввод не поддерживается этим браузером.');return}
@@ -607,3 +615,114 @@ function showManualPhotoDiagnostic(rawResponse){
   panel.querySelector('pre').textContent=rawResponse;
   panel.open=true;
 }
+
+// The product list belongs to the current user. It is loaded only when the
+// meal field receives focus, then kept in memory for the current session.
+const mealSuggestions=document.createElement('datalist');
+mealSuggestions.id='mealNameSuggestions';
+document.body.append(mealSuggestions);
+mealNameInput?.setAttribute('list',mealSuggestions.id);
+let savedMealProducts=[];
+let savedMealProductsUid='';
+let savedMealProductsLoading=null;
+let savedMealEstimate=null;
+
+function renderMealSuggestions(products){
+  mealSuggestions.replaceChildren();
+  [...new Map(products.map(product=>[String(product.title).trim().toLocaleLowerCase('ru-RU'),product])).values()]
+    .sort((left,right)=>left.title.localeCompare(right.title,'ru'))
+    .forEach(product=>{const option=document.createElement('option');option.value=product.title.trim();mealSuggestions.append(option)});
+}
+
+async function loadMealSuggestions(){
+  const account=window.nutritionStore?.getAccountProfileDefaults?.()||{};
+  if(savedMealProductsUid===account.uid&&savedMealProducts.length)return savedMealProducts;
+  if(savedMealProductsLoading)return savedMealProductsLoading;
+  savedMealProductsLoading=window.nutritionStore?.listProducts?.().then(products=>{
+    savedMealProducts=Array.isArray(products)?products:[];
+    savedMealProductsUid=account.uid;
+    renderMealSuggestions(savedMealProducts);
+    return savedMealProducts;
+  }).catch(()=>[]).finally(()=>{savedMealProductsLoading=null});
+  return savedMealProductsLoading||[];
+}
+
+function applySavedMealProduct(){
+  const title=mealNameInput?.value.trim().toLocaleLowerCase('ru-RU');
+  const product=savedMealProducts.find(item=>String(item.title||'').trim().toLocaleLowerCase('ru-RU')===title);
+  if(!product)return;
+  savedMealEstimate={title,portion:Number(product.portion),calories:Number(product.calories),protein:Number(product.protein),fat:Number(product.fat),carbs:Number(product.carbs)};
+  calories.value='';protein.value='';fat.value='';carbs.value='';
+  toast('Введите размер порции — БЖУ пересчитаются по данным личной базы');
+}
+
+function fillSavedMealNutrition(){
+  const amount=Number(portion.value),base=savedMealEstimate;
+  if(!base||base.title!==mealNameInput?.value.trim().toLocaleLowerCase('ru-RU')||!Number.isFinite(base.portion)||base.portion<=0||!Number.isFinite(amount)||amount<=0){calories.value='';protein.value='';fat.value='';carbs.value='';return}
+  const ratio=amount/base.portion;
+  calories.value=Math.round(base.calories*ratio);
+  protein.value=Number((base.protein*ratio).toFixed(1));
+  fat.value=Number((base.fat*ratio).toFixed(1));
+  carbs.value=Number((base.carbs*ratio).toFixed(1));
+  setAutomaticPortionUnit();
+}
+
+mealNameInput?.addEventListener('focus',loadMealSuggestions);
+mealNameInput?.addEventListener('change',applySavedMealProduct);
+mealNameInput?.addEventListener('input',()=>{savedMealEstimate=null});
+portion.addEventListener('input',fillSavedMealNutrition);
+window.addEventListener('nutrition-auth-changed',()=>{savedMealProducts=[];savedMealProductsUid='';savedMealEstimate=null;mealSuggestions.replaceChildren()});
+
+function showAiCalculationResult({title,portionLabel,calories:resultCalories,protein:resultProtein,fat:resultFat,carbs:resultCarbs,error}){
+  document.getElementById('aiCalculationResult')?.remove();
+  const dialog=document.createElement('div');
+  dialog.id='aiCalculationResult';dialog.className='modal show';
+  const sheet=document.createElement('section');sheet.className='sheet';sheet.setAttribute('role','dialog');sheet.setAttribute('aria-modal','true');
+  const heading=document.createElement('h2');heading.textContent=error?'Не удалось рассчитать':'Расчёт ИИ';
+  const message=document.createElement('p');message.className='hello';
+  if(error)message.textContent=error;
+  else message.textContent=`${title} · ${portionLabel}`;
+  sheet.append(heading,message);
+  if(!error){
+    const values=document.createElement('p');values.className='hello';
+    values.textContent=`${Math.round(resultCalories)} ккал · Б ${Number(resultProtein).toLocaleString('ru-RU',{maximumFractionDigits:1})} г · Ж ${Number(resultFat).toLocaleString('ru-RU',{maximumFractionDigits:1})} г · У ${Number(resultCarbs).toLocaleString('ru-RU',{maximumFractionDigits:1})} г`;
+    sheet.append(values);
+  }
+  const close=document.createElement('button');close.type='button';close.className='primary';close.textContent='Понятно';close.onclick=()=>dialog.remove();sheet.append(close);dialog.append(sheet);document.body.append(dialog);close.focus();
+}
+
+// AI can estimate a 100 g base without a user-entered portion. Keep that base
+// only in the open form; entering a portion then scales it through the existing
+// manual-photo estimate handler.
+const calculateNutritionWithOptionalPortion=window.calculateMealNutrition;
+window.calculateMealNutrition=async function(clarification=''){
+  if(!mealName.value.trim()){mealName.focus();showAiCalculationResult({error:'Введите название блюда'});return}
+  const originalPortion=portion.value;
+  const hasPortion=Number(originalPortion)>0;
+  const calculationPortion=hasPortion?Number(originalPortion):100;
+  const unit=hasPortion?document.getElementById('portionUnit').value:'г';
+  let calculationError='';
+  const originalToast=toast;
+  toast=message=>{
+    const text=String(message||'');
+    if(text.startsWith('Не удалось рассчитать:'))calculationError=text;
+    else if(!text.startsWith('Калории и БЖУ заполнены'))originalToast(message);
+  };
+  savedMealEstimate=null;
+  recognizedManualMealEstimate=null;
+  calories.value='';protein.value='';fat.value='';carbs.value='';
+  if(!hasPortion)portion.value='100';
+  try{await calculateNutritionWithOptionalPortion(clarification)}catch(error){calculationError=`Не удалось рассчитать: ${error.message}`}
+  finally{toast=originalToast}
+  const calculated=calories.value!==''&&Number.isFinite(Number(calories.value));
+  if(!calculated){if(!hasPortion)portion.value=originalPortion;showAiCalculationResult({error:calculationError||'ИИ не вернул расчёт'});return}
+  const result={title:mealName.value.trim(),portionLabel:`${calculationPortion} ${unit}`,calories:Number(calories.value),protein:Number(protein.value)||0,fat:Number(fat.value)||0,carbs:Number(carbs.value)||0};
+  if(!hasPortion){
+    recognizedManualMealEstimate={portion:100,calories:result.calories,protein:result.protein,fat:result.fat,carbs:result.carbs};
+    portion.value=originalPortion;
+    calories.value='';protein.value='';fat.value='';carbs.value='';
+    clearMealEstimateError(portion);
+  }
+  showAiCalculationResult(result);
+};
+document.getElementById('calculateMealButton').onclick=()=>window.calculateMealNutrition();
