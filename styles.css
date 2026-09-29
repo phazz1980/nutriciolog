@@ -94,3 +94,9 @@
     #profile .release-info{position:absolute;top:-20px;right:0;color:var(--muted);font-size:10px;line-height:1;pointer-events:none}
     #authPanel #resendEmailVerification{margin-right:8px}
     #authPanel #signOutButton{display:block;margin-top:14px}
+    /* The meal form needs the whole visible viewport on phones: the keyboard can
+       otherwise leave only a short, bottom-aligned sheet to work with. */
+    @media(max-width:699px){
+      #modal{align-items:stretch}
+      #modal .sheet{width:100%;height:100%;max-height:none;border-radius:0;padding:calc(22px + env(safe-area-inset-top,0px)) 22px calc(22px + env(safe-area-inset-bottom,0px))}
+    }
