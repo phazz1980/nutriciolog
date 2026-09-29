@@ -454,6 +454,21 @@ async function saveProduct(product) {
   });
 }
 
+async function deleteProduct(name) {
+  await waitForAccount();
+  const normalizedName = normalizeProductName(name);
+  if (!normalizedName) throw new Error("Не указан продукт для удаления");
+  if (!configured || !user || !db) {
+    localStorage.removeItem(key("products", normalizedName));
+    reportDebug({ type: "delete", mode: "local", collection: "products" });
+    return { mode: "local" };
+  }
+  const { deleteDoc, doc } = window.__firestore;
+  await deleteDoc(doc(db, "users", user.uid, "products", normalizedName));
+  reportDebug({ type: "delete", mode: "cloud", collection: "products" });
+  return { mode: "cloud" };
+}
+
 async function loadWaterLog(date) {
   await waitForAccount();
   const safeDate = String(date || "");
@@ -527,6 +542,7 @@ window.nutritionStore = {
   loadProduct,
   listProducts,
   saveProduct,
+  deleteProduct,
 };
 
 initFirebase();

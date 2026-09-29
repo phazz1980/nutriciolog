@@ -68,6 +68,13 @@
     button.meal-photo-action{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23748780' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 7.5A2.5 2.5 0 0 1 6.5 5h2l1.2-1.5h.6L11.5 5h2A2.5 2.5 0 0 1 16 7.5v7A2.5 2.5 0 0 1 13.5 17h-7A2.5 2.5 0 0 1 4 14.5z'/%3E%3Ccircle cx='10' cy='11' r='2.8'/%3E%3C/svg%3E")}
     button.meal-name-action[aria-label*="голосом"]{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23748780' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='8' y='3' width='8' height='12' rx='4'/%3E%3Cpath d='M5 11a7 7 0 0 0 14 0M12 18v3M8.5 21h7'/%3E%3C/svg%3E")}
     button.meal-name-action.is-listening{background-color:var(--mint);background-image:none;font-size:16px;color:var(--green)}
+    .meal-suggestions{display:grid;gap:4px;max-height:190px;overflow:auto;margin-top:6px;padding:6px;background:var(--paper);border:1px solid var(--line);border-radius:16px;box-shadow:0 8px 18px #1d463012}
+    .meal-suggestions[hidden]{display:none}
+    .meal-suggestion-row{display:flex;align-items:center;gap:4px}
+    button.meal-suggestion{flex:1;min-width:0;min-height:42px;padding:10px 14px;border:0;border-radius:11px;background:transparent;color:var(--ink);text-align:left;font:inherit}
+    button.meal-suggestion:hover,button.meal-suggestion:focus-visible{background:var(--mint);color:var(--green);outline:0}
+    button.meal-suggestion-delete{flex:0 0 auto;min-height:36px;padding:7px 9px;border:0;border-radius:10px;background:transparent;color:#a33;font:inherit;font-size:13px}
+    button.meal-suggestion-delete:hover,button.meal-suggestion-delete:focus-visible{background:#fff0f0;outline:0}
     .ask{border-top:0;padding-top:14px}
     .ask-control{position:relative;min-width:0;width:100%}
     .ask-control input#question{width:100%;min-height:54px;padding:14px 142px 14px 18px;background:var(--paper);border:1px solid var(--line);border-radius:999px;color:var(--ink);box-shadow:none}
