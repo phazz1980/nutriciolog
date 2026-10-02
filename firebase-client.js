@@ -23,6 +23,7 @@ const key = (name, date = "") => `my-nutritionist:${name}:${date}`;
 const reportDebug = detail => window.dispatchEvent(new CustomEvent("nutrition-debug", { detail }));
 let profileGeneration = 0, profileRefresh = null, profileSaving = false;
 const profileCacheKey = uid => key(`account:${uid}:profile:v1`);
+const latestProfileCacheKey = key("account:latest-profile:v1");
 
 // Cache only display fields, never Firebase users, credentials or tokens.
 function profileFields(value) {
@@ -50,12 +51,28 @@ function cachedProfile(uid) {
 }
 
 function cacheProfile(uid, value) {
-  try { localStorage.setItem(profileCacheKey(uid), JSON.stringify({ version: 1, profile: profileFields(value) })); }
+  try {
+    const profile = profileFields(value);
+    localStorage.setItem(profileCacheKey(uid), JSON.stringify({ version: 1, profile }));
+    localStorage.setItem(latestProfileCacheKey, JSON.stringify({ version: 1, uid, profile }));
+  }
   catch { /* The cloud operation remains successful when device storage is full. */ }
 }
 
+function cachedProfilePreview() {
+  try {
+    const entry = JSON.parse(localStorage.getItem(latestProfileCacheKey));
+    if (entry?.version !== 1 || typeof entry.uid !== "string" || !entry.uid || entry.profile === null) return null;
+    const profile = profileFields(entry.profile);
+    return profile ? { uid: entry.uid, profile } : null;
+  } catch { return null; }
+}
+
 function removeCachedProfile(uid) {
-  try { localStorage.removeItem(profileCacheKey(uid)); } catch {}
+  try {
+    localStorage.removeItem(profileCacheKey(uid));
+    if (cachedProfilePreview()?.uid === uid) localStorage.removeItem(latestProfileCacheKey);
+  } catch {}
 }
 
 function publishProfile(uid, profile) {
@@ -518,6 +535,7 @@ window.nutritionStore = {
   saveProfile: profile => save("profile", "main", profile),
   loadProfile,
   getAccountProfileDefaults: () => ({ uid: user?.uid || "", name: user?.displayName || "", email: user?.email || "", photoUrl: "" }),
+  getCachedProfilePreview: cachedProfilePreview,
   saveDayPlan: plan => save("dayPlans", plan.date, plan),
   saveWaterLog: log => save("waterLogs", log.date, log),
   loadWaterLog,
