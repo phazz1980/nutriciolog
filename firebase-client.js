@@ -307,7 +307,7 @@ function updateAuthUI() {
   let panel = document.getElementById("authPanel");
   const screen = document.getElementById("profile");
   if (!screen) return;
-  if (!panel) { panel = document.createElement("section"); panel.id = "authPanel"; panel.className = "card"; screen.append(panel); }
+  if (!panel) { panel = document.createElement("section"); panel.id = "authPanel"; panel.className = "card"; screen.insertBefore(panel, document.getElementById("profileDocuments")); }
   if (!configured) { panel.innerHTML = '<b>Гостевой режим</b><p class="hello">Данные остаются на этом устройстве. После настройки Firebase здесь появится вход и синхронизация.</p><button class="secondary" type="button" disabled>Войти после настройки Firebase</button>'; return; }
   if (authState !== "ready") {
     panel.innerHTML = '<b>Подключение аккаунта</b><p class="hello" role="status"></p><button class="primary" type="button" id="retryAuth"></button><button class="secondary" type="button" id="guestAuth">Продолжить как гость</button>';
