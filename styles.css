@@ -26,7 +26,11 @@
     .field input[aria-invalid="true"]::placeholder{color:#a33131;opacity:1}
     .profile-documents{margin:18px 0 0;padding:0 4px 4px;display:flex;justify-content:center;gap:16px;flex-wrap:wrap;font-size:12px}.profile-documents a{color:var(--muted)}
     .top-side{display:flex;align-items:center;gap:8px}
-    .diary-calendar{width:44px;min-height:42px;padding:0;border:1px solid var(--line);border-radius:12px;background:var(--paper);color:var(--muted);font-size:16px}
+    /* Название дня и кнопка календаря в одной строке. Само поле даты скрыто,
+       но остаётся в разметке: showPicker() не работает для display:none. */
+    .diary-heading{position:relative;display:flex;align-items:center}
+    .diary-calendar-button{margin-left:8px;font-size:20px;line-height:1;vertical-align:middle}
+    .diary-calendar-input{position:absolute;width:1px;height:1px;padding:0;border:0;opacity:0;pointer-events:none}
     .photo-source-sheet{display:grid;gap:10px}
     .photo-source-title{margin:2px 4px 4px;font-weight:700}
     .photo-source-sheet .secondary{width:100%;padding:14px}
