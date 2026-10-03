@@ -10,6 +10,12 @@ const firebaseConfig = {
 
 const configured = !Object.values(firebaseConfig).some(value => value.startsWith("YOUR_"));
 const googleAuthReady = true;
+// Локальная дата, а не toISOString(): в Москве UTC-дата переключается в 03:00.
+const localDateKey = () => {
+  const now = new Date();
+  const pad = value => String(value).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+};
 let db, user = null;
 let authState = configured ? "loading" : "ready";
 let initialization = null, signInAttempt = null, guestMode = false;
@@ -328,7 +334,7 @@ function updateAuthUI() {
   }
   if (user) {
     const verification = user.email && !user.emailVerified ? '<p class="hello" id="emailVerificationMessage">Подтвердите email по ссылке из письма, чтобы завершить регистрацию.</p><button class="secondary" type="button" id="resendEmailVerification">Отправить письмо повторно</button><button class="link" type="button" id="checkEmailVerification">Я подтвердил email</button>' : '<p class="hello">Ваши данные синхронизируются с личным аккаунтом.</p>';
-    const providers = user.providerData.map(provider => provider.providerId);
+    const providers = (user.providerData || []).map(provider => provider.providerId);
     const canAddPassword = user.email && providers.includes("google.com") && !providers.includes("password");
     const passwordLinking = canAddPassword ? '<form id="linkEmailPasswordForm"><p class="hello">Чтобы входить без Google, создайте пароль для этого же email. Данные и аккаунт сохранятся.</p><label class="field">Новый пароль<input id="linkEmailPassword" type="password" autocomplete="new-password" minlength="6" required></label><button class="secondary" type="submit">Создать пароль для входа</button><p class="hello" id="linkEmailPasswordMessage"></p></form>' : '';
     panel.innerHTML = `<b>${user.email || 'Аккаунт подключён'}</b>${verification}${passwordLinking}<button class="secondary" type="button" id="signOutButton">Выйти</button>`;
@@ -569,7 +575,19 @@ window.dispatchEvent(new Event("nutritionstore-ready"));
 window.addProposedMeal = async meal => {
   if (!meal || !meal.title || !Number.isFinite(Number(meal.calories))) throw new Error("Некорректное предложение блюда");
   meal.id ||= crypto.randomUUID();
-  return window.nutritionStore.saveDiaryEntry({ date: meal.date || new Date().toISOString().slice(0, 10), id: meal.id, mealType: meal.mealType || "Перекус", title: meal.title, calories: Number(meal.calories), source: "ai-confirmed" });
+  return window.nutritionStore.saveDiaryEntry({
+    date: meal.date || localDateKey(),
+    id: meal.id,
+    mealType: meal.mealType || "Перекус",
+    title: String(meal.title).trim(),
+    portion: Number(meal.portion) || null,
+    portionUnit: meal.portionUnit || "г",
+    calories: Number(meal.calories),
+    protein: Number(meal.protein) || 0,
+    fat: Number(meal.fat) || 0,
+    carbs: Number(meal.carbs) || 0,
+    source: "ai-confirmed",
+  });
 };
 
 window.addProposedProduct = async product => {
@@ -577,7 +595,7 @@ window.addProposedProduct = async product => {
   product.id ||= crypto.randomUUID();
   const entry = {
     id: product.id,
-    date: product.date || new Date().toISOString().slice(0, 10),
+    date: product.date || localDateKey(),
     mealType: product.mealType || "Перекус",
     title: String(product.title).trim(),
     portion: Number(product.portion) || null,
