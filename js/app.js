@@ -1096,7 +1096,14 @@ async function recognizeMealPhoto(file) {
         openMeal();
         element("mealDate").value = "today";
         fillMealForm(estimate);
-        recognizedManualMealEstimate = null;
+        // Сохраняем базу распознавания, иначе при изменении порции БЖУ не пересчитаются.
+        recognizedManualMealEstimate = {
+          portion: Number(estimate.portion) || 100,
+          calories: Number(estimate.calories) || 0,
+          protein: Number(estimate.protein) || 0,
+          fat: Number(estimate.fat) || 0,
+          carbs: Number(estimate.carbs) || 0,
+        };
         toastPhotoTransfer();
       },
     });
@@ -1122,7 +1129,14 @@ function openPhotoMealInAddForm(data) {
   element("mealDate").value = "today";
   element("mealType").value = MEAL_TYPES.includes(estimate.mealType) ? estimate.mealType : "Перекус";
   fillMealForm(estimate);
-  recognizedManualMealEstimate = null;
+  // Сохраняем базу распознавания, иначе при изменении порции БЖУ не пересчитаются.
+  recognizedManualMealEstimate = {
+    portion: Number(estimate.portion) || 100,
+    calories: Number(estimate.calories) || 0,
+    protein: Number(estimate.protein) || 0,
+    fat: Number(estimate.fat) || 0,
+    carbs: Number(estimate.carbs) || 0,
+  };
   toast("Данные по фото перенесены в форму — проверьте и нажмите «Сохранить»");
 }
 
