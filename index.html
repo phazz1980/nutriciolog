@@ -28,18 +28,17 @@
   <h2>Добавить блюдо</h2>
   <label class="field">Когда добавить<select id="mealDate"><option value="today">Сегодня</option><option value="tomorrow">Завтра</option></select></label>
   <label class="field">Приём пищи<select id="mealType" required><option value="" selected disabled>Выберите приём пищи</option><option>Завтрак</option><option>Обед</option><option>Ужин</option><option>Перекус</option></select></label>
-  <div class="row meal-name-portion">
+  <div class="row meal-name-row">
     <label class="field">Название блюда
       <span class="meal-name-control">
         <input id="mealName" required placeholder="Например, салат с курицей">
         <span class="meal-name-actions" id="mealNameActions"></span>
       </span>
     </label>
-    <label class="field"><span>Порция, г / шт.</span><input id="portion" type="number" min="1" step="1" inputmode="numeric" required><input id="portionUnit" type="hidden" value="г"></label>
     <button class="secondary meal-name-action" id="manualPhotoButton" type="button" title="Распознать блюдо по фото" aria-label="Распознать блюдо по фото"></button>
   </div>
-  <div class="row meal-data-row"><label class="field">Калории<input id="calories" type="number" min="0" required></label><label class="field">Белки, г<input id="protein" type="number" min="0" step="0.1"></label></div>
-  <div class="row meal-macros-row"><label class="field">Жиры, г<input id="fat" type="number" min="0" step="0.1"></label><label class="field">Углеводы, г<input id="carbs" type="number" min="0" step="0.1"></label></div>
+  <div class="row meal-data-row"><label class="field">Порция, г / шт.<input id="portion" type="number" min="1" step="1" inputmode="numeric" required><input id="portionUnit" type="hidden" value="г"></label><label class="field">Калории<input id="calories" type="number" min="0" required></label></div>
+  <div class="row meal-macros-row"><label class="field">Белки, г<input id="protein" type="number" min="0" step="0.1"></label><label class="field">Жиры, г<input id="fat" type="number" min="0" step="0.1"></label><label class="field">Углеводы, г<input id="carbs" type="number" min="0" step="0.1"></label></div>
   <input id="manualMealPhoto" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden>
   <p class="hello" id="nutritionPrecisionHint">Чем подробнее опишете ингредиенты и способ приготовления, тем точнее будет расчёт.</p>
   <button class="secondary" id="calculateMealButton" type="button" style="width:100%;margin-top:4px">✦ Рассчитать с ИИ</button>
