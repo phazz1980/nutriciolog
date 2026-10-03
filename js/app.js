@@ -247,6 +247,8 @@ async function deleteDiaryEntry(id, item) {
   row.remove();
   if (card && !card.querySelector(".entry")) card.remove();
   else updateMealGroupSummary(card);
+  // Без этого дневник оставался полностью пустым после удаления последней записи.
+  if (!element("mealList").querySelector(".entry")) element("mealList").replaceChildren(emptyDiaryCard());
   subtractNutrition(todayNutrition, values);
   renderNutrition();
   try {
