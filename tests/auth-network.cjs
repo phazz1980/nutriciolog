@@ -15,7 +15,8 @@ export const browserLocalPersistence={};
 export const setPersistence=()=>Promise.resolve();
 export class GoogleAuthProvider {}
 export function onAuthStateChanged(auth, next){
-  window.test.setUser=next;
+  // Firebase always delivers providerData; mirror it so the app sees a realistic user.
+  window.test.setUser=user=>next(window.test.prepareUser?window.test.prepareUser(user):user);
   if(!window.test.delaySession)queueMicrotask(()=>next(window.test.user));
   return ()=>{};
 }
@@ -51,6 +52,7 @@ export const serverTimestamp=()=>0;
     if (!file.startsWith(root + path.sep)) { res.writeHead(403).end(); return; }
     try {
       res.setHeader('Content-Type', file.endsWith('.js') ? 'text/javascript' : file.endsWith('.html') ? 'text/html; charset=utf-8' : 'application/octet-stream');
+      res.setHeader('Cache-Control', 'no-store');
       res.end(fs.readFileSync(file));
     } catch { res.writeHead(404).end(); }
   });
@@ -67,6 +69,8 @@ export const serverTimestamp=()=>0;
       page.on('pageerror', error => errors.push(error.message));
       await page.addInitScript(opts => {
         window.test = { ...opts, user: null, popupCalls: 0, writes: [], profileReads: [] };
+        // The app renders provider-dependent UI, so mock users need the fields Firebase always sends.
+        window.test.prepareUser = user => user && { providerData: [], emailVerified: true, ...user };
         localStorage.setItem('my-nutritionist:profile:main:', JSON.stringify({ name: 'Guest' }));
       }, options);
       let failImports = Boolean(options.failImports);
@@ -236,6 +240,8 @@ export const serverTimestamp=()=>0;
     await check('AI buttons reflect sign-in, offline state, service failure and recovery', {}, async ({ page, context }) => {
       await page.waitForFunction(() => window.getFirebaseAuthStatus().state === 'ready');
       const button=page.locator('#calculateMealButton');
+      // Availability is rendered on a later tick than the auth state, so wait for it.
+      await page.waitForFunction(() => document.getElementById('calculateMealButton').classList.contains('ai-unavailable'));
       assert.match(await button.getAttribute('class'), /ai-unavailable/);
       await page.evaluate(() => window.test.setUser({uid:'A',getIdToken:async()=>'token'}));
       await page.waitForFunction(() => !document.getElementById('calculateMealButton').classList.contains('ai-unavailable'));
