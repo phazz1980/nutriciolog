@@ -42,7 +42,7 @@ export default {
       if (error instanceof AccessError) return json({ error: error.message }, 401, request);
       if (error instanceof Error && error.message === "Blackroute provider is missing its Worker secret") return json({ error: "В Worker не найден секрет Blackroute API. Добавьте BLACKROUTE_API_KEY как Secret и сохраните настройки." }, 500, request);
       if (error instanceof Error && error.message === "Blackroute network request failed") return json({ error: "Worker не смог подключиться к API Blackroute." }, 502, request);
-      if (error instanceof AiResponseFormatError) return json({ error: "ИИ вернул ответ в неподходящем формате. Повторите запрос.", debugResponse: error.rawResponse }, 502, request);
+      if (error instanceof AiResponseFormatError) return json({ advice: error.rawResponse, proposedMeal: null, proposedProducts: [] }, 200, request);
       if (error instanceof SyntaxError) return json({ error: "ИИ вернул ответ в неподходящем формате. Повторите запрос." }, 502, request);
       if (error instanceof Error && error.message.startsWith("Blackroute request failed")) {
         const status = error.message.match(/\((\d{3})/)?.[1];
