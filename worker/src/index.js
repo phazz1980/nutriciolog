@@ -22,7 +22,7 @@ export default {
   async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response(null, { headers: corsHeaders(request) });
     if (request.method === "GET" && new URL(request.url).pathname === "/api/health") {
-      return json({ status: "ok", version: "0.1.16", provider: env.AI_PROVIDER || null, textModel: env.BLACKROUTE_MODEL || null, visionModel: env.BLACKROUTE_VISION_MODEL || null, apiKeyConfigured: Boolean(env.BLACKROUTE_API_KEY) }, 200, request);
+      return json({ status: "ok", version: "0.1.17", provider: env.AI_PROVIDER || null, textModel: env.BLACKROUTE_MODEL || null, visionModel: env.BLACKROUTE_VISION_MODEL || null, apiKeyConfigured: Boolean(env.BLACKROUTE_API_KEY) }, 200, request);
     }
     if (request.method !== "POST") return json({ error: "Method not allowed" }, 405, request);
     try {
