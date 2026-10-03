@@ -1515,11 +1515,18 @@ function initProfile() {
 }
 
 function initDiaryCalendar() {
-  const calendar = element("diaryCalendar");
-  if (!calendar) return;
-  calendar.value = selectedDiaryDate;
-  calendar.addEventListener("change", () => {
-    if (calendar.value) renderDiaryForDate(calendar.value);
+  const input = element("diaryCalendar");
+  const button = element("diaryCalendarButton");
+  if (!input) return;
+  input.max = dateKeyFor("tomorrow");
+  input.value = selectedDiaryDate;
+  input.addEventListener("change", () => {
+    if (input.value) renderDiaryForDate(input.value);
+  });
+  // Кнопка открывает нативный выбор даты; поле даты при этом скрыто.
+  button?.addEventListener("click", () => {
+    if (typeof input.showPicker === "function") input.showPicker();
+    else input.click();
   });
 }
 
