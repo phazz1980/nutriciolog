@@ -23,6 +23,7 @@ const key = (name, date = "") => `my-nutritionist:${name}:${date}`;
 const reportDebug = detail => window.dispatchEvent(new CustomEvent("nutrition-debug", { detail }));
 let profileGeneration = 0, profileRefresh = null, profileSaving = false;
 const profileCacheKey = uid => key(`account:${uid}:profile:v1`);
+const latestProfileCacheKey = key("account:latest-profile:v1");
 
 // Cache only display fields, never Firebase users, credentials or tokens.
 function profileFields(value) {
@@ -50,12 +51,28 @@ function cachedProfile(uid) {
 }
 
 function cacheProfile(uid, value) {
-  try { localStorage.setItem(profileCacheKey(uid), JSON.stringify({ version: 1, profile: profileFields(value) })); }
+  try {
+    const profile = profileFields(value);
+    localStorage.setItem(profileCacheKey(uid), JSON.stringify({ version: 1, profile }));
+    localStorage.setItem(latestProfileCacheKey, JSON.stringify({ version: 1, uid, profile }));
+  }
   catch { /* The cloud operation remains successful when device storage is full. */ }
 }
 
+function cachedProfilePreview() {
+  try {
+    const entry = JSON.parse(localStorage.getItem(latestProfileCacheKey));
+    if (entry?.version !== 1 || typeof entry.uid !== "string" || !entry.uid || entry.profile === null) return null;
+    const profile = profileFields(entry.profile);
+    return profile ? { uid: entry.uid, profile } : null;
+  } catch { return null; }
+}
+
 function removeCachedProfile(uid) {
-  try { localStorage.removeItem(profileCacheKey(uid)); } catch {}
+  try {
+    localStorage.removeItem(profileCacheKey(uid));
+    if (cachedProfilePreview()?.uid === uid) localStorage.removeItem(latestProfileCacheKey);
+  } catch {}
 }
 
 function publishProfile(uid, profile) {
@@ -290,7 +307,7 @@ function updateAuthUI() {
   let panel = document.getElementById("authPanel");
   const screen = document.getElementById("profile");
   if (!screen) return;
-  if (!panel) { panel = document.createElement("section"); panel.id = "authPanel"; panel.className = "card"; screen.append(panel); }
+  if (!panel) { panel = document.createElement("section"); panel.id = "authPanel"; panel.className = "card"; screen.insertBefore(panel, document.getElementById("profileDocuments")); }
   if (!configured) { panel.innerHTML = '<b>Гостевой режим</b><p class="hello">Данные остаются на этом устройстве. После настройки Firebase здесь появится вход и синхронизация.</p><button class="secondary" type="button" disabled>Войти после настройки Firebase</button>'; return; }
   if (authState !== "ready") {
     panel.innerHTML = '<b>Подключение аккаунта</b><p class="hello" role="status"></p><button class="primary" type="button" id="retryAuth"></button><button class="secondary" type="button" id="guestAuth">Продолжить как гость</button>';
@@ -416,6 +433,23 @@ async function loadProduct(name) {
   return snapshot.exists() ? snapshot.data() : null;
 }
 
+async function listProducts() {
+  await waitForAccount();
+  if (!configured || !user || !db) {
+    const prefix = key("products:");
+    return Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index)).flatMap(storageKey => {
+      if (!storageKey?.startsWith(prefix)) return [];
+      try {
+        const product = JSON.parse(localStorage.getItem(storageKey));
+        return typeof product?.title === "string" && product.title.trim() ? [product] : [];
+      } catch { return []; }
+    });
+  }
+  const { collection, getDocs } = window.__firestore;
+  const snapshot = await getDocs(collection(db, "users", user.uid, "products"));
+  return snapshot.docs.map(document => document.data()).filter(product => typeof product?.title === "string" && product.title.trim());
+}
+
 async function saveProduct(product) {
   const title = String(product?.title || "").trim();
   const normalizedName = normalizeProductName(title);
@@ -435,6 +469,21 @@ async function saveProduct(product) {
     carbs: Number(product.carbs) || 0,
     ...(clarificationQuestion && additionalIngredients ? { aiClarification: { question: clarificationQuestion, additionalIngredients } } : {}),
   });
+}
+
+async function deleteProduct(name) {
+  await waitForAccount();
+  const normalizedName = normalizeProductName(name);
+  if (!normalizedName) throw new Error("Не указан продукт для удаления");
+  if (!configured || !user || !db) {
+    localStorage.removeItem(key("products", normalizedName));
+    reportDebug({ type: "delete", mode: "local", collection: "products" });
+    return { mode: "local" };
+  }
+  const { deleteDoc, doc } = window.__firestore;
+  await deleteDoc(doc(db, "users", user.uid, "products", normalizedName));
+  reportDebug({ type: "delete", mode: "cloud", collection: "products" });
+  return { mode: "cloud" };
 }
 
 async function loadWaterLog(date) {
@@ -486,6 +535,7 @@ window.nutritionStore = {
   saveProfile: profile => save("profile", "main", profile),
   loadProfile,
   getAccountProfileDefaults: () => ({ uid: user?.uid || "", name: user?.displayName || "", email: user?.email || "", photoUrl: "" }),
+  getCachedProfilePreview: cachedProfilePreview,
   saveDayPlan: plan => save("dayPlans", plan.date, plan),
   saveWaterLog: log => save("waterLogs", log.date, log),
   loadWaterLog,
@@ -508,7 +558,9 @@ window.nutritionStore = {
   loadDiaryEntries,
   loadWeightEntries,
   loadProduct,
+  listProducts,
   saveProduct,
+  deleteProduct,
 };
 
 initFirebase();

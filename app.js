@@ -1,5 +1,15 @@
 const AI_ENDPOINT='https://my-nutritionist-advice.340052.workers.dev/api/advice';const planMeals={"Завтрак":[{name:"Омлет с овощами",calories:310}],"Обед":[{name:"Боул с курицей",calories:520}],"Ужин":[],"Перекус":[{name:"Яблоко и йогурт",calories:170}]};let editingPlan=null;let water=0;function show(id){document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.target===id))}function renderWater(){let html='';for(let i=0;i<8;i++)html+=`<button class="drop ${i<water?'full':''}" onclick="toggleWater(${i})">💧</button>`;drops.innerHTML=html;waterText.textContent=`${water} из 8 стаканов`}function addWater(){if(water<8)water++;renderWater();toast('Стакан воды добавлен')}function toggleWater(i){water=i+1;renderWater()}function openMeal(){modal.classList.add('show');mealName.focus()}function closeMeal(){modal.classList.remove('show')}function saveMeal(e){e.preventDefault();let n=mealName.value,c=calories.value,p=portion.value||'—';mealList.insertAdjacentHTML('beforeend',`<section class="card"><h2>🌙 ${mealType.value}</h2><div class="entry"><div><b>${n}</b><small>${p} г · вручную добавлено</small></div><b>${c} ккал</b></div></section>`);let total=+eaten.textContent.replaceAll(' ','')+(+c);eaten.textContent=total.toLocaleString('ru-RU');remain.textContent=Math.max(0,1800-total).toLocaleString('ru-RU')+' ккал';closeMeal();e.target.reset();show('diary');toast('Блюдо добавлено в дневник')}function addWeight(){toast('Запись веса: 65,4 кг')}function toast(t){let e=document.getElementById('toast');e.textContent=t;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),2200)}function renderPlan(){const list=document.getElementById('planList');let total=0;list.innerHTML=Object.entries(planMeals).map(([type,items])=>{const sum=items.reduce((n,x)=>n+x.calories,0);total+=sum;return `<section class="card"><div class="section-head" style="margin:0 0 8px"><h2>${type}</h2><b>${sum} ккал</b></div>${items.length?items.map((x,i)=>`<button class="entry" style="width:100%;background:none;text-align:left" onclick="openPlanItem('${type}',${i})"><span><b>${x.name}</b><small>Нажмите, чтобы изменить</small></span><b>${x.calories} ккал</b></button>`).join(''):'<p class="hello">Ничего не запланировано</p>'}</section>`}).join('');plannedTotal.textContent=total.toLocaleString('ru-RU');const remaining=1800-total;plannedRemaining.textContent=(remaining>=0?remaining.toLocaleString('ru-RU'):'+'+Math.abs(remaining).toLocaleString('ru-RU'))+' ккал';planPercent.textContent=Math.round(total/18)+'%'}function openPlanItem(type,index){editingPlan=typeof index==='number'?{type,index}:null;planFormTitle.textContent=editingPlan?'Изменить блюдо':'Запланировать блюдо';planType.value=editingPlan?type:'Завтрак';planName.value=editingPlan?planMeals[type][index].name:'';planCalories.value=editingPlan?planMeals[type][index].calories:'';planModal.classList.add('show');planName.focus()}function closePlanItem(){planModal.classList.remove('show')}function savePlanItem(e){e.preventDefault();const type=planType.value;const item={name:planName.value.trim(),calories:Number(planCalories.value)};if(editingPlan){planMeals[editingPlan.type].splice(editingPlan.index,1);if(editingPlan.type!==type)planMeals[type].push(item);else planMeals[type].splice(editingPlan.index,0,item)}else planMeals[type].push(item);closePlanItem();renderPlan();toast('План обновлён')}async function askAI(e){e.preventDefault();const text=question.value.trim();chatlog.insertAdjacentHTML('beforeend',`<div class="bubble user"></div>`);chatlog.lastElementChild.textContent=text;question.value='';if(AI_ENDPOINT.includes('YOUR-WORKER')){chatlog.insertAdjacentHTML('beforeend','<div class="bubble">Сервер ещё не подключён. Следуйте README: укажите адрес Cloudflare Worker в константе AI_ENDPOINT.</div>');return}chatStatus.textContent='Формирую ответ…';try{const r=await requestAiAdvice({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка сервиса');chatlog.insertAdjacentHTML('beforeend','<div class="bubble"></div>');chatlog.lastElementChild.textContent=d.advice;chatStatus.textContent='Ответ носит справочный характер.'}catch(err){chatStatus.textContent='Не удалось получить ответ: '+err.message}}renderWater();renderPlan();
 
+const mealNameBrowserInput=document.getElementById('mealName');
+if(mealNameBrowserInput){
+  mealNameBrowserInput.name='meal-title';
+  mealNameBrowserInput.autocomplete='off';
+  mealNameBrowserInput.setAttribute('autocorrect','off');
+  mealNameBrowserInput.setAttribute('autocapitalize','none');
+  mealNameBrowserInput.spellcheck=false;
+  mealNameBrowserInput.form?.setAttribute('autocomplete','off');
+}
+
 async function getAiToken(){
   if(navigator.onLine===false){toast('Нет интернета. ИИ станет доступен после подключения.');return undefined}
   try{
@@ -20,7 +30,9 @@ let voiceCancelled=false;window.toggleVoice=function(){if(!Recognition){setVoice
 
 function setAiDebug(text){const panel=document.getElementById('aiDebug');if(!panel)return;panel.textContent=`Отладка: ${text}`;panel.style.display='block'}
 window.askAI=async function(e){e.preventDefault();const text=question.value.trim();if(!text)return;const token=await getAiToken();if(token===undefined)return;if(!token){chatStatus.textContent='Войдите через Google в профиле, чтобы воспользоваться ИИ.';show('profile');return}const before=chatlog.children.length;chatlog.insertAdjacentHTML('beforeend','<div class="bubble user"></div>');chatlog.lastElementChild.textContent=text;question.value='';chatStatus.textContent='Формирую ответ…';setAiDebug('запрос отправлен');try{const r=await requestAiAdvice({method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({message:text,image:selectedPhoto})});const d=await r.json();if(!r.ok){setAiDebug(`Worker ответил HTTP ${r.status}`);throw new Error(d.error||'Ошибка сервиса')}setAiDebug('Worker ответил успешно');chatlog.insertAdjacentHTML('beforeend','<div class="bubble"></div>');chatlog.lastElementChild.textContent=d.advice;chatStatus.textContent='Ответ носит справочный характер.';if(d.proposedProducts)await showProductProposals(d.proposedProducts);if(d.proposedMeal)showMealProposal(d.proposedMeal);removePhoto();if(voiceOn&&chatlog.children.length>before&&'speechSynthesis'in window){speechSynthesis.cancel();const utterance=new SpeechSynthesisUtterance(d.advice);utterance.lang='ru-RU';speechSynthesis.speak(utterance)}}catch(err){const status=document.getElementById('aiDebug')?.textContent||'';if(!status.includes('HTTP'))setAiDebug('ошибка запроса');chatStatus.textContent='Не удалось получить ответ: '+err.message}}
-const APP_VERSION='v0.2.22';const RELEASE_DATE='3 октября 2026';const defaultProfile={name:'Анна',age:27,height:165,weight:65.4,targetWeight:62,goal:'Похудение',calories:1800};let currentProfile={...defaultProfile};let currentAccount={};let profileNameReady=false;let profileNameFallbackTimer;let profileLoadVersion=0;
+const todayNutrition={calories:0,protein:0,fat:0,carbs:0};
+const safeNumber=value=>Number.isFinite(Number(value))?Number(value):0;
+const APP_VERSION='v0.2.37';const RELEASE_DATE='3 октября 2026';const defaultProfile={name:'Анна',age:27,height:165,weight:65.4,targetWeight:62,goal:'Похудение',calories:1800};let currentProfile={...defaultProfile};let currentAccount={};let profileNameReady=false;let profileNameFallbackTimer;let profileLoadVersion=0;
 function formatNumber(value){return Number(value).toLocaleString('ru-RU',{maximumFractionDigits:1})}
 function firstName(name){return String(name||'').trim().split(/\s+/)[0]||''}
 function renderProfile(){document.getElementById('profileName').textContent=profileNameReady?currentProfile.name:'Загружаем профиль…';const avatar=document.getElementById('profileAvatar');avatar.replaceChildren();if(currentAccount.photoUrl){const photo=document.createElement('img');photo.src=currentAccount.photoUrl;photo.alt='Фото профиля Google';photo.referrerPolicy='no-referrer';photo.style.cssText='width:100%;height:100%;object-fit:cover;border-radius:50%';avatar.append(photo)}else avatar.textContent='🌿';document.getElementById('profileSummary').textContent=` · ${currentProfile.age} лет · ${formatNumber(currentProfile.height)} см · ${formatNumber(currentProfile.weight)} кг`;document.getElementById('profileGoal').textContent=currentProfile.goal;document.getElementById('profileRate').textContent=`Цель: ${formatNumber(currentProfile.targetWeight)} кг`;document.getElementById('profileCalories').textContent=`${formatNumber(currentProfile.calories)} ккал`;document.getElementById('releaseInfo').textContent=`Версия ${APP_VERSION} · ${RELEASE_DATE}`}
@@ -28,17 +40,16 @@ const releaseInfo=document.getElementById('releaseInfo');document.querySelector(
 function shouldUseAccountName(saved,account){return Boolean(firstName(account.name))&&(!saved||!saved.name||saved.name===defaultProfile.name)}
 function applyProfile(saved,account){currentAccount=account;currentProfile={...defaultProfile,...(saved||{})};if(shouldUseAccountName(saved,account))currentProfile.name=firstName(account.name);profileNameReady=Boolean(firstName(account.name))||Boolean(saved?.name&&saved.name!==defaultProfile.name);if(profileNameReady)clearTimeout(profileNameFallbackTimer);renderProfile();window.renderNutrition?.()}
 async function loadProfile(){if(!window.nutritionStore)return;const version=++profileLoadVersion;let saved=null;try{saved=await window.nutritionStore.loadProfile()}catch{}if(version!==profileLoadVersion)return;applyProfile(saved,window.nutritionStore.getAccountProfileDefaults())}
+function applyCachedProfilePreview(){const preview=window.nutritionStore?.getCachedProfilePreview?.();if(preview?.profile)applyProfile(preview.profile,{uid:preview.uid})}
 function refreshProfileFromAccount(){if(!window.nutritionStore)return;const account=window.nutritionStore.getAccountProfileDefaults();if(account.uid!==currentAccount.uid){profileLoadVersion++;applyProfile(null,account)}loadProfile()}
 window.addEventListener('nutrition-profile-updated',event=>{const account=window.nutritionStore?.getAccountProfileDefaults();if(!account?.uid||account.uid!==event.detail.uid)return;profileLoadVersion++;applyProfile(event.detail.profile,account)});
 function openProfileEditor(){const account=window.nutritionStore?.getAccountProfileDefaults?.()||{};if(firstName(account.name)&&currentProfile.name===defaultProfile.name){currentProfile.name=firstName(account.name);currentAccount=account;renderProfile()}document.getElementById('profileNameInput').value=currentProfile.name;document.getElementById('profileAgeInput').value=currentProfile.age;document.getElementById('profileHeightInput').value=currentProfile.height;document.getElementById('profileWeightInput').value=currentProfile.weight;document.getElementById('profileTargetWeightInput').value=currentProfile.targetWeight;document.getElementById('profileGoalInput').value=currentProfile.goal;document.getElementById('profileCaloriesInput').value=currentProfile.calories;document.getElementById('profileModal').classList.add('show');document.getElementById('profileNameInput').focus()}
 function closeProfileEditor(){document.getElementById('profileModal').classList.remove('show')}
 async function saveProfile(event){event.preventDefault();const profile={name:document.getElementById('profileNameInput').value.trim(),age:Number(document.getElementById('profileAgeInput').value),height:Number(document.getElementById('profileHeightInput').value),weight:Number(document.getElementById('profileWeightInput').value),targetWeight:Number(document.getElementById('profileTargetWeightInput').value),goal:document.getElementById('profileGoalInput').value,calories:Number(document.getElementById('profileCaloriesInput').value)};if(!profile.name||!Object.values(profile).every(value=>typeof value!=='number'||Number.isFinite(value))){toast('Проверьте заполнение профиля');return}if(!window.nutritionStore){toast('Хранилище ещё загружается');return}const previousProfile=currentProfile,accountUid=currentAccount.uid;profileLoadVersion++;currentProfile=profile;renderProfile();window.renderNutrition?.();closeProfileEditor();toast('Профиль сохранён');try{await window.nutritionStore.saveProfile(profile)}catch{if(currentAccount.uid===accountUid){currentProfile=previousProfile;renderProfile();window.renderNutrition?.()}toast('Не удалось синхронизировать профиль. Попробуйте ещё раз.')}}
-window.addEventListener('nutritionstore-ready',loadProfile);window.addEventListener('nutrition-auth-changed',refreshProfileFromAccount);profileNameFallbackTimer=setTimeout(()=>{profileNameReady=true;renderProfile();window.renderNutrition?.()},10_000);renderProfile();
+function loadInitialProfile(){applyCachedProfilePreview();loadProfile()}window.addEventListener('nutritionstore-ready',loadInitialProfile);window.addEventListener('nutrition-auth-changed',refreshProfileFromAccount);profileNameFallbackTimer=setTimeout(()=>{profileNameReady=true;renderProfile();window.renderNutrition?.()},10_000);renderProfile();queueMicrotask(loadInitialProfile);
 
 const dataDateKey=()=>new Date().toISOString().slice(0,10);
 function dateKeyFor(when){const date=new Date();if(when==='tomorrow')date.setDate(date.getDate()+1);return date.toISOString().slice(0,10)}
-const todayNutrition={calories:0,protein:0,fat:0,carbs:0};
-const safeNumber=value=>Number.isFinite(Number(value))?Number(value):0;
 function nutritionTargets(){const calories=safeNumber(currentProfile?.calories);return{protein:Math.round(calories*.3/4),fat:Math.round(calories*.3/9),carbs:Math.round(calories*.4/4)}}
 function renderNutrition(){const calories=safeNumber(currentProfile?.calories),targets=nutritionTargets(),format=value=>safeNumber(value).toLocaleString('ru-RU',{maximumFractionDigits:1}),setMacro=(name,total,target)=>{document.getElementById(`${name}Total`).textContent=`${format(total)} / ${format(target)} г`;document.getElementById(`${name}Bar`).style.width=`${Math.min(100,target?total/target*100:0)}%`};document.getElementById('greeting').textContent=`Доброе утро${profileNameReady&&currentProfile?.name?`, ${currentProfile.name}`:''}`;document.getElementById('todayTitle').textContent=`Сегодня, ${new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long'}).format(new Date())}`;eaten.textContent=format(todayNutrition.calories);document.getElementById('calorieGoal').textContent=format(calories);remain.textContent=`${format(Math.max(0,calories-todayNutrition.calories))} ккал`;document.getElementById('goalPercent').textContent=`${Math.round(Math.min(100,calories?todayNutrition.calories/calories*100:0))}%`;setMacro('protein',todayNutrition.protein,targets.protein);setMacro('fat',todayNutrition.fat,targets.fat);setMacro('carbs',todayNutrition.carbs,targets.carbs)}
 const mealTypeOrder=['Завтрак','Обед','Ужин','Перекус'];
@@ -115,6 +126,125 @@ const historyAddButton=document.querySelector('#diary .top .secondary:last-child
 document.getElementById('dietHistoryButton')?.remove();const diaryTitle=document.querySelector('#diary .top h1'),diaryTitleWrap=diaryTitle?.parentElement,diaryCalendarInput=document.createElement('input');let selectedDiaryDate=dataDateKey();function diaryDateTitle(date){if(date===dataDateKey())return 'Сегодня';if(date===dateKeyFor('tomorrow'))return 'Завтра';return new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long'}).format(new Date(`${date}T00:00:00`))}async function renderDiaryForDate(date){selectedDiaryDate=date;diaryTitle.textContent=diaryDateTitle(date);if(date===dataDateKey()){await loadDiary();return}mealList.replaceChildren();const hint=document.createElement('p');hint.className='hello';hint.textContent='Просмотр сохранённого рациона';mealList.append(hint);try{const entries=await window.nutritionStore?.loadDiaryEntries?.(date)||[];if(!entries.length){const empty=document.createElement('section');empty.className='card';empty.textContent='За этот день записей нет.';mealList.append(empty);return}const total=entries.reduce((sum,entry)=>sum+safeNumber(entry.calories),0),summary=document.createElement('p');summary.className='hello';summary.textContent=`Всего: ${formatNumber(total)} ккал`;mealList.append(summary);const groups=new Map();entries.forEach(entry=>{const type=entry.mealType||'Перекус';if(!groups.has(type))groups.set(type,[]);groups.get(type).push(entry)});['Завтрак','Обед','Ужин','Перекус'].forEach(type=>{const items=groups.get(type);if(!items?.length)return;const card=document.createElement('section');card.className='card';const heading=document.createElement('h2');heading.textContent=`${diaryIcons[type]||'🍽️'} ${type}`;card.append(heading);items.forEach(entry=>{const row=document.createElement('div');row.className='entry';const description=document.createElement('div'),title=document.createElement('b'),details=document.createElement('small'),calories=document.createElement('b');title.textContent=entry.title;details.textContent=`${entry.portion||'—'} ${entry.portionUnit||'г'} · Б ${safeNumber(entry.protein)} · Ж ${safeNumber(entry.fat)} · У ${safeNumber(entry.carbs)}`;calories.textContent=`${formatNumber(safeNumber(entry.calories))} ккал`;description.append(title,details);row.append(description,calories);card.append(row)});mealList.append(card)})}catch{toast('Не удалось загрузить рацион. Попробуйте ещё раз.')}}if(diaryTitle&&diaryTitleWrap&&!document.getElementById('diaryCalendarButton')){diaryTitle.style.display='inline-block';diaryCalendarInput.id='diaryCalendarInput';diaryCalendarInput.type='date';diaryCalendarInput.max=dateKeyFor('tomorrow');diaryCalendarInput.value=dataDateKey();diaryCalendarInput.style.cssText='position:absolute;opacity:0;pointer-events:none;width:1px;height:1px';diaryCalendarInput.onchange=()=>renderDiaryForDate(diaryCalendarInput.value);const calendarButton=document.createElement('button');calendarButton.id='diaryCalendarButton';calendarButton.type='button';calendarButton.className='link';calendarButton.style.cssText='margin-left:8px;font-size:20px;vertical-align:middle';calendarButton.textContent='📅';calendarButton.setAttribute('aria-label','Выбрать дату рациона');calendarButton.onclick=()=>{if(diaryCalendarInput.showPicker)diaryCalendarInput.showPicker();else diaryCalendarInput.click()};diaryTitleWrap.append(calendarButton,diaryCalendarInput)}window.addEventListener('nutrition-auth-changed',()=>renderDiaryForDate(selectedDiaryDate));window.addEventListener('nutritionstore-ready',()=>renderDiaryForDate(selectedDiaryDate));
 Array.from(document.querySelectorAll('#diary .top .secondary')).find(button=>button.textContent.trim()==='✦ С ИИ')?.remove();
 Array.from(document.querySelectorAll('#diary .hello')).find(element=>element.textContent.includes('Добавьте с ИИ:'))?.remove();
+
+// Group entries in native disclosure widgets so each meal can be collapsed without
+// hiding its calorie subtotal.  Keeping the entries in a separate body also makes
+// deletion and subtotal recalculation independent from the heading markup.
+function updateMealGroupSummary(card){
+  if(!card)return;
+  const total=Array.from(card.querySelectorAll('.entry')).reduce((sum,row)=>sum+safeNumber(row.dataset.calories),0);
+  const totalElement=card.querySelector('.meal-group-total');
+  if(totalElement)totalElement.textContent=`${formatNumber(total)} ккал`;
+}
+
+function createMealGroup(type){
+  const card=document.createElement('details');
+  card.className='card meal-group';
+  card.dataset.mealType=type;
+  card.open=true;
+  const summary=document.createElement('summary');
+  const title=document.createElement('span');
+  title.className='meal-group-title';
+  title.textContent=`${diaryIcons[type]||'🍽️'} ${type}`;
+  const total=document.createElement('b');
+  total.className='meal-group-total';
+  total.textContent='0 ккал';
+  summary.append(title,total);
+  const body=document.createElement('div');
+  body.className='meal-group-body';
+  card.append(summary,body);
+  return card;
+}
+
+function createDiaryEntryRow(entry,{deletable=false}={}){
+  const item=document.createElement('div');
+  item.className='entry';
+  item.dataset.entryId=entry.id||'';
+  item.dataset.calories=safeNumber(entry.calories);
+  if(deletable)item.style.cssText='position:relative;padding-right:36px';
+  const description=document.createElement('div');
+  const title=document.createElement('b');
+  title.textContent=entry.title;
+  const details=document.createElement('small');
+  details.textContent=`${entry.portion||'—'} ${entry.portionUnit||'г'} · Б ${safeNumber(entry.protein)} · Ж ${safeNumber(entry.fat)} · У ${safeNumber(entry.carbs)}`;
+  const calories=document.createElement('b');
+  calories.textContent=`${formatNumber(safeNumber(entry.calories))} ккал`;
+  description.append(title,details);
+  item.append(description,calories);
+  if(deletable){
+    const remove=document.createElement('button');
+    remove.type='button';remove.className='link';remove.textContent='×';
+    remove.title=`Удалить ${entry.title}`;remove.setAttribute('aria-label',`Удалить ${entry.title}`);
+    remove.style.cssText='position:absolute;right:0;top:8px;margin:0;padding:0 4px;color:#b44747;font-size:22px;line-height:1;font-weight:700';
+    remove.onclick=event=>{event.preventDefault();event.stopPropagation();window.deleteDiaryEntry(entry.id,item)};
+    item.append(remove);
+  }
+  return item;
+}
+
+function appendEntriesByMeal(list,entries,{deletable=false}={}){
+  const groups=new Map();
+  entries.forEach(entry=>{const type=entry.mealType||'Перекус';if(!groups.has(type))groups.set(type,[]);groups.get(type).push(entry)});
+  mealTypeOrder.forEach(type=>{
+    const items=groups.get(type);if(!items?.length)return;
+    const card=createMealGroup(type),body=card.querySelector('.meal-group-body');
+    items.forEach(entry=>body.append(createDiaryEntryRow(entry,{deletable})));
+    updateMealGroupSummary(card);
+    list.append(card);
+  });
+}
+
+window.addDiaryEntryToView=function(entry){
+  if(entry.date!==dataDateKey())return;
+  entry.id||=crypto.randomUUID();
+  todayNutrition.calories+=safeNumber(entry.calories);todayNutrition.protein+=safeNumber(entry.protein);
+  todayNutrition.fat+=safeNumber(entry.fat);todayNutrition.carbs+=safeNumber(entry.carbs);renderNutrition();
+  const empty=mealList.querySelector('.hello');if(empty?.closest('.card'))empty.closest('.card').remove();
+  const type=entry.mealType||'Перекус';
+  let card=mealList.querySelector(`[data-meal-type="${type}"]`);
+  if(!card){
+    card=createMealGroup(type);
+    const rank=mealTypeRank(type);
+    const next=Array.from(mealList.querySelectorAll('[data-meal-type]')).find(existing=>mealTypeRank(existing.dataset.mealType)>rank);
+    mealList.insertBefore(card,next||null);
+  }
+  card.querySelector('.meal-group-body').append(createDiaryEntryRow(entry,{deletable:true}));
+  updateMealGroupSummary(card);
+};
+
+window.deleteDiaryEntry=async function(id,item){
+  const row=item||mealList.querySelector(`[data-entry-id="${id}"]`);
+  if(!row){toast('Не удалось определить запись для удаления');return}
+  const values={calories:safeNumber(row.dataset.calories),protein:Number((row.textContent.match(/Б\s*([\d.,]+)/)||[,0])[1].replace(',','.')),fat:Number((row.textContent.match(/Ж\s*([\d.,]+)/)||[,0])[1].replace(',','.')),carbs:Number((row.textContent.match(/У\s*([\d.,]+)/)||[,0])[1].replace(',','.'))};
+  const card=row.closest('[data-meal-type]');row.remove();
+  if(card&&!card.querySelector('.entry'))card.remove();else updateMealGroupSummary(card);
+  todayNutrition.calories=Math.max(0,todayNutrition.calories-values.calories);todayNutrition.protein=Math.max(0,todayNutrition.protein-safeNumber(values.protein));todayNutrition.fat=Math.max(0,todayNutrition.fat-safeNumber(values.fat));todayNutrition.carbs=Math.max(0,todayNutrition.carbs-safeNumber(values.carbs));renderNutrition();
+  try{await window.nutritionStore?.deleteDiaryEntry?.(id);toast('Запись удалена из дневника')}catch{await loadDiary();toast('Не удалось сохранить удаление. Попробуйте ещё раз.')}
+};
+
+async function renderDiaryForDate(date){
+  selectedDiaryDate=date;diaryTitle.textContent=diaryDateTitle(date);
+  if(date===dataDateKey()){await loadDiary();return}
+  mealList.replaceChildren();
+  const hint=document.createElement('p');hint.className='hello';hint.textContent='Просмотр сохранённого рациона';mealList.append(hint);
+  try{
+    const entries=await window.nutritionStore?.loadDiaryEntries?.(date)||[];
+    if(!entries.length){const empty=document.createElement('section');empty.className='card';empty.textContent='За этот день записей нет.';mealList.append(empty);return}
+    const total=entries.reduce((sum,entry)=>sum+safeNumber(entry.calories),0),summary=document.createElement('p');summary.className='hello';summary.textContent=`Всего: ${formatNumber(total)} ккал`;mealList.append(summary);
+    appendEntriesByMeal(mealList,entries);
+  }catch{toast('Не удалось загрузить рацион. Попробуйте ещё раз.')}
+}
+
+async function renderDietHistory(date,list,status){
+  list.replaceChildren();status.textContent='Загружаю рацион…';
+  try{
+    const entries=await window.nutritionStore?.loadDiaryEntries?.(date)||[];
+    status.textContent=new Intl.DateTimeFormat('ru-RU',{dateStyle:'long'}).format(new Date(`${date}T00:00:00`));
+    if(!entries.length){const empty=document.createElement('p');empty.className='hello';empty.textContent='За этот день записей нет.';list.append(empty);return}
+    const total=entries.reduce((sum,entry)=>sum+safeNumber(entry.calories),0),summary=document.createElement('p');summary.className='hello';summary.textContent=`Всего: ${formatNumber(total)} ккал`;list.append(summary);
+    appendEntriesByMeal(list,entries);
+  }catch{status.textContent='Не удалось загрузить историю.'}
+}
 
 function clearMealEstimateError(input){
   document.getElementById(`${input.id}Error`)?.remove();
@@ -366,6 +496,14 @@ if(mealNameInput&&manualPhotoButton){
   mealVoiceButton.title='Ввести название голосом';
   mealVoiceButton.setAttribute('aria-label','Ввести название блюда голосом');
   mealNameActions.append(mealVoiceButton);
+  if(nutritionCalculateButton){
+    nutritionCalculateButton.className='secondary meal-name-action meal-calculate-action';
+    nutritionCalculateButton.style.cssText='';
+    nutritionCalculateButton.textContent='✦';
+    nutritionCalculateButton.title='Рассчитать БЖУ с ИИ';
+    nutritionCalculateButton.setAttribute('aria-label','Рассчитать БЖУ с ИИ');
+    mealNameActions.append(nutritionCalculateButton);
+  }
   let mealRecognition=null;
   mealVoiceButton.onclick=()=>{
     if(!Recognition){toast('Голосовой ввод не поддерживается этим браузером.');return}
@@ -450,14 +588,19 @@ window.askAI=async function(event){
 
 let recognizedManualMealEstimate=null;
 
-function showPhotoRecognitionDialog(){
+function showPhotoRecognitionDialog(message,title='Результат распознавания'){
   document.getElementById('photoRecognitionDialog')?.remove();
   const dialog=document.createElement('div');
   dialog.id='photoRecognitionDialog';
   dialog.className='modal show';
-  dialog.innerHTML='<section class="sheet" role="dialog" aria-modal="true" aria-labelledby="photoRecognitionTitle"><h2 id="photoRecognitionTitle">Фото распознано</h2><p class="hello">Введите размер порции в граммах. После этого приложение рассчитает калории и БЖУ.</p><button class="primary" type="button">ОК</button></section>';
-  const close=()=>{dialog.remove();portion.focus()};
-  dialog.querySelector('button').onclick=close;
+  const match=String(message||'').trim().match(/^([^\r\n]+)\r?\nБ:\s*([\d.,]+)\s*г\s*·\s*Ж:\s*([\d.,]+)\s*г\s*·\s*У:\s*([\d.,]+)\s*г$/);
+  dialog.innerHTML='<section class="sheet" role="dialog" aria-modal="true" aria-labelledby="photoRecognitionTitle"><h2 id="photoRecognitionTitle"></h2><p class="hello" style="white-space:pre-line"></p><div class="photo-add-controls" hidden><label class="field">Вес, г<input type="number" min="1" step="1" value="100"></label><label class="field">Приём пищи<select><option>Завтрак</option><option>Обед</option><option>Ужин</option><option selected>Перекус</option></select></label><label class="field">Когда добавить<select><option value="today">Сегодня</option><option value="tomorrow">Завтра</option></select></label><button class="primary" type="button">Добавить</button></div><button class="link" type="button" style="display:block;margin:14px auto 0">Закрыть</button></section>';
+  dialog.querySelector('h2').textContent=title;
+  dialog.querySelector('p').textContent=message;
+  const close=()=>dialog.remove();
+  const [controls,weight,mealType,date,add,closeButton]=[dialog.querySelector('.photo-add-controls'),...dialog.querySelectorAll('input,select,button')];
+  if(match){controls.hidden=false;const number=value=>Number(String(value).replace(',','.'));const base={protein:number(match[2]),fat:number(match[3]),carbs:number(match[4])};const values=()=>{const ratio=Math.max(Number(weight.value)||0,0)/100;return{protein:Number((base.protein*ratio).toFixed(1)),fat:Number((base.fat*ratio).toFixed(1)),carbs:Number((base.carbs*ratio).toFixed(1))}};const render=()=>{const value=values();dialog.querySelector('p').textContent=`${match[1].trim()}\nБ: ${value.protein} г · Ж: ${value.fat} г · У: ${value.carbs} г`};weight.oninput=render;render();add.onclick=()=>{const value=values();if(!Number.isFinite(Number(weight.value))||Number(weight.value)<=0){weight.focus();return}const entry={id:crypto.randomUUID(),date:dateKeyFor(date.value),mealType:mealType.value,title:match[1].trim(),portion:Number(weight.value),calories:Math.round(value.protein*4+value.fat*9+value.carbs*4),...value,source:'photo-ai-confirmed'};addDiaryEntryToView(entry);persistUserData('saveDiaryEntry',entry);close();toast(`Блюдо добавлено на ${date.value==='today'?'сегодня':'завтра'}`)}}
+  closeButton.onclick=close;
   dialog.onkeydown=event=>{if(event.key==='Escape')close()};
   document.body.append(dialog);
   dialog.querySelector('button').focus();
@@ -489,23 +632,13 @@ async function recognizeManualMealPhoto(file){
     const dataUrl=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file)});
     const response=await requestAiAdvice({method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({message:'Распознай блюдо на фотографии. Верни один наиболее заметный продукт или блюдо с ориентировочными калориями, белками, жирами, углеводами и весом порции в граммах. Не сохраняй ничего.',image:{dataUrl,mimeType:file.type}})});
     const data=await response.json();
-    if(!response.ok){showManualPhotoDiagnostic(data.debugResponse);throw new Error(data.error||'Ошибка сервиса')}
-    const estimate=data.proposedProducts?.find(product=>product?.title&&Number.isFinite(Number(product.calories)))||data.proposedMeal;
-    if(!estimate?.title||!Number.isFinite(Number(estimate.calories)))throw new Error('ИИ не смог распознать блюдо');
-    recognizedManualMealEstimate={
-      portion:Math.max(Number(estimate.portion)||100,1),
-      calories:Number(estimate.calories),
-      protein:Number(estimate.protein||0),
-      fat:Number(estimate.fat||0),
-      carbs:Number(estimate.carbs||0),
-    };
-    mealName.value=estimate.title;
-    portion.value='';
-    calories.value='';
-    protein.value='';
-    fat.value='';
-    carbs.value='';
-    showPhotoRecognitionDialog();
+    if(!response.ok){if(typeof data.debugResponse==='string'&&data.debugResponse){showPhotoRecognitionDialog(data.debugResponse,'Ответ ИИ');return}throw new Error(data.error||'Ошибка сервиса')}
+    const answer=String(data.advice||'').trim();
+    if(!answer)throw new Error('ИИ не вернул результат распознавания');
+    const normalized=answer.toLowerCase();
+    const isNotFood=normalized==='это не еда.'||normalized==='это не еда';
+    const title=isNotFood||normalized==='не удалось распознать блюдо.'||normalized==='не удалось распознать блюдо'?'Распознавание фото':'Результат распознавания';
+    showPhotoRecognitionDialog(isNotFood?'🪨 Это не еда.':answer,title);
   }catch(error){toast(`Не удалось распознать фото: ${error.message}`)}
   finally{manualPhotoInput.value='';manualPhotoButton.textContent='📷';manualPhotoButton.disabled=false}
 }
@@ -529,3 +662,147 @@ function showManualPhotoDiagnostic(rawResponse){
   panel.querySelector('pre').textContent=rawResponse;
   panel.open=true;
 }
+
+// The product list belongs to the current user. It is loaded only when the
+// meal field receives focus, then kept in memory for the current session.
+const mealSuggestions=document.createElement('div');
+mealSuggestions.id='mealNameSuggestions';
+mealSuggestions.className='meal-suggestions';
+mealSuggestions.setAttribute('role','listbox');
+mealSuggestions.hidden=true;
+mealNameControl.after(mealSuggestions);
+mealNameInput?.setAttribute('aria-controls',mealSuggestions.id);
+mealNameInput?.setAttribute('aria-expanded','false');
+let savedMealProducts=[];
+let savedMealProductsUid='';
+let savedMealProductsLoading=null;
+let savedMealEstimate=null;
+let skipMealSuggestionsOnFocus=false;
+
+function renderMealSuggestions(products){
+  mealSuggestions.replaceChildren();
+  const query=mealNameInput?.value.trim().toLocaleLowerCase('ru-RU')||'';
+  const matches=[...new Map(products.map(product=>[String(product.title).trim().toLocaleLowerCase('ru-RU'),product])).values()]
+    .filter(product=>!query||product.title.toLocaleLowerCase('ru-RU').includes(query))
+    .sort((left,right)=>left.title.localeCompare(right.title,'ru'))
+    .slice(0,30);
+  matches.forEach(product=>{
+    const row=document.createElement('div');row.className='meal-suggestion-row';
+    const option=document.createElement('button');option.type='button';option.className='meal-suggestion';option.setAttribute('role','option');option.textContent=product.title.trim();
+    option.onmousedown=event=>event.preventDefault();
+    option.onclick=()=>{mealNameInput.value=product.title.trim();applySavedMealProduct();mealSuggestions.hidden=true;mealNameInput.setAttribute('aria-expanded','false');skipMealSuggestionsOnFocus=true;mealNameInput.focus()};
+    const remove=document.createElement('button');remove.type='button';remove.className='meal-suggestion-delete';remove.textContent='Удалить';remove.setAttribute('aria-label',`Удалить «${product.title.trim()}» из личной базы`);
+    remove.onclick=()=>deleteSavedMealProduct(product);
+    row.append(option,remove);mealSuggestions.append(row);
+  });
+  mealSuggestions.hidden=!matches.length;
+  mealNameInput?.setAttribute('aria-expanded',String(Boolean(matches.length)));
+}
+
+async function deleteSavedMealProduct(product){
+  const title=String(product?.title||'').trim();
+  if(!title||!window.nutritionStore?.deleteProduct){toast('Не удалось определить блюдо для удаления');return}
+  if(!window.confirm(`Удалить «${title}» из личной базы? Записи в дневнике останутся.`))return;
+  try{
+    await window.nutritionStore.deleteProduct(title);
+    const normalized=title.toLocaleLowerCase('ru-RU');
+    savedMealProducts=savedMealProducts.filter(item=>String(item.title||'').trim().toLocaleLowerCase('ru-RU')!==normalized);
+    if(savedMealEstimate?.title===normalized)savedMealEstimate=null;
+    renderMealSuggestions(savedMealProducts);
+    toast('Блюдо удалено из личной базы');
+  }catch{toast('Не удалось удалить блюдо. Проверьте соединение и повторите.')}
+}
+
+async function loadMealSuggestions(){
+  const account=window.nutritionStore?.getAccountProfileDefaults?.()||{};
+  if(savedMealProductsUid===account.uid&&savedMealProducts.length)return savedMealProducts;
+  if(savedMealProductsLoading)return savedMealProductsLoading;
+  savedMealProductsLoading=window.nutritionStore?.listProducts?.().then(products=>{
+    savedMealProducts=Array.isArray(products)?products:[];
+    savedMealProductsUid=account.uid;
+    renderMealSuggestions(savedMealProducts);
+    return savedMealProducts;
+  }).catch(()=>[]).finally(()=>{savedMealProductsLoading=null});
+  return savedMealProductsLoading||[];
+}
+
+function applySavedMealProduct(){
+  const title=mealNameInput?.value.trim().toLocaleLowerCase('ru-RU');
+  const product=savedMealProducts.find(item=>String(item.title||'').trim().toLocaleLowerCase('ru-RU')===title);
+  if(!product)return;
+  savedMealEstimate={title,portion:Number(product.portion),calories:Number(product.calories),protein:Number(product.protein),fat:Number(product.fat),carbs:Number(product.carbs)};
+  calories.value='';protein.value='';fat.value='';carbs.value='';
+  toast('Введите размер порции — БЖУ пересчитаются по данным личной базы');
+}
+
+function fillSavedMealNutrition(){
+  const amount=Number(portion.value),base=savedMealEstimate;
+  if(!base||base.title!==mealNameInput?.value.trim().toLocaleLowerCase('ru-RU')||!Number.isFinite(base.portion)||base.portion<=0||!Number.isFinite(amount)||amount<=0){calories.value='';protein.value='';fat.value='';carbs.value='';return}
+  const ratio=amount/base.portion;
+  calories.value=Math.round(base.calories*ratio);
+  protein.value=Number((base.protein*ratio).toFixed(1));
+  fat.value=Number((base.fat*ratio).toFixed(1));
+  carbs.value=Number((base.carbs*ratio).toFixed(1));
+  setAutomaticPortionUnit();
+}
+
+mealNameInput?.addEventListener('focus',()=>{if(skipMealSuggestionsOnFocus){skipMealSuggestionsOnFocus=false;return}loadMealSuggestions().then(()=>renderMealSuggestions(savedMealProducts))});
+mealNameInput?.addEventListener('change',applySavedMealProduct);
+mealNameInput?.addEventListener('input',()=>{savedMealEstimate=null;renderMealSuggestions(savedMealProducts)});
+mealNameInput?.addEventListener('blur',()=>setTimeout(()=>{mealSuggestions.hidden=true;mealNameInput.setAttribute('aria-expanded','false')},120));
+portion.addEventListener('input',fillSavedMealNutrition);
+window.addEventListener('nutrition-auth-changed',()=>{savedMealProducts=[];savedMealProductsUid='';savedMealEstimate=null;mealSuggestions.replaceChildren();mealSuggestions.hidden=true});
+
+function showAiCalculationResult({title,portionLabel,calories:resultCalories,protein:resultProtein,fat:resultFat,carbs:resultCarbs,error}){
+  document.getElementById('aiCalculationResult')?.remove();
+  const dialog=document.createElement('div');
+  dialog.id='aiCalculationResult';dialog.className='modal show';
+  const sheet=document.createElement('section');sheet.className='sheet';sheet.setAttribute('role','dialog');sheet.setAttribute('aria-modal','true');
+  const heading=document.createElement('h2');heading.textContent=error?'Не удалось рассчитать':'Расчёт ИИ';
+  const message=document.createElement('p');message.className='hello';
+  if(error)message.textContent=error;
+  else message.textContent=`${title} · ${portionLabel}`;
+  sheet.append(heading,message);
+  if(!error){
+    const values=document.createElement('p');values.className='hello';
+    values.textContent=`${Math.round(resultCalories)} ккал · Б ${Number(resultProtein).toLocaleString('ru-RU',{maximumFractionDigits:1})} г · Ж ${Number(resultFat).toLocaleString('ru-RU',{maximumFractionDigits:1})} г · У ${Number(resultCarbs).toLocaleString('ru-RU',{maximumFractionDigits:1})} г`;
+    sheet.append(values);
+  }
+  const close=document.createElement('button');close.type='button';close.className='primary';close.textContent='Понятно';close.onclick=()=>dialog.remove();sheet.append(close);dialog.append(sheet);document.body.append(dialog);close.focus();
+}
+
+// AI can estimate a 100 g base without a user-entered portion. Keep that base
+// only in the open form; entering a portion then scales it through the existing
+// manual-photo estimate handler.
+const calculateNutritionWithOptionalPortion=window.calculateMealNutrition;
+window.calculateMealNutrition=async function(clarification=''){
+  if(!mealName.value.trim()){mealName.focus();showAiCalculationResult({error:'Введите название блюда'});return}
+  const originalPortion=portion.value;
+  const hasPortion=Number(originalPortion)>0;
+  const calculationPortion=hasPortion?Number(originalPortion):100;
+  const unit=hasPortion?document.getElementById('portionUnit').value:'г';
+  let calculationError='';
+  const originalToast=toast;
+  toast=message=>{
+    const text=String(message||'');
+    if(text.startsWith('Не удалось рассчитать:'))calculationError=text;
+    else if(!text.startsWith('Калории и БЖУ заполнены'))originalToast(message);
+  };
+  savedMealEstimate=null;
+  recognizedManualMealEstimate=null;
+  calories.value='';protein.value='';fat.value='';carbs.value='';
+  if(!hasPortion)portion.value='100';
+  try{await calculateNutritionWithOptionalPortion(clarification)}catch(error){calculationError=`Не удалось рассчитать: ${error.message}`}
+  finally{toast=originalToast}
+  const calculated=calories.value!==''&&Number.isFinite(Number(calories.value));
+  if(!calculated){if(!hasPortion)portion.value=originalPortion;showAiCalculationResult({error:calculationError||'ИИ не вернул расчёт'});return}
+  const result={title:mealName.value.trim(),portionLabel:`${calculationPortion} ${unit}`,calories:Number(calories.value),protein:Number(protein.value)||0,fat:Number(fat.value)||0,carbs:Number(carbs.value)||0};
+  if(!hasPortion){
+    recognizedManualMealEstimate={portion:100,calories:result.calories,protein:result.protein,fat:result.fat,carbs:result.carbs};
+    portion.value=originalPortion;
+    calories.value='';protein.value='';fat.value='';carbs.value='';
+    clearMealEstimateError(portion);
+  }
+  showAiCalculationResult(result);
+};
+document.getElementById('calculateMealButton').onclick=()=>window.calculateMealNutrition();
