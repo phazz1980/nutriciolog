@@ -8,6 +8,59 @@ const listeners = new Set();
 let tokenError = "";
 let serviceError = "";
 let activeRequests = 0;
+let quota = null;
+let quotaError = "";
+let quotaGeneration = 0;
+let quotaLoad = null;
+
+function authHeaders(token) {
+  return { "Content-Type": "application/json", [new URL(AI_ENDPOINT).hostname === "functions.yandexcloud.net" ? "X-X20-Authorization" : "Authorization"]: `Bearer ${token}` };
+}
+
+function acceptQuota(value, generation) {
+  if (generation !== quotaGeneration || value?.unit !== "requests" ||
+      !Number.isSafeInteger(value.limit) || value.limit < 1 ||
+      !Number.isSafeInteger(value.used) || value.used < 0 ||
+      !/^\d{4}-\d{2}$/.test(value.period || "") || !Number.isFinite(Date.parse(value.resetsAt))) return false;
+  // Parallel responses can arrive in reverse order. Never restore spent slots.
+  if (quota && value.period < quota.period) return false;
+  const used = quota?.period === value.period ? Math.max(quota.used, value.used) : value.used;
+  quota = { ...value, used, remaining: Math.max(0, value.limit - used) };
+  quotaError = "";
+  notify();
+  return true;
+}
+
+export function quotaState() {
+  return { quota: quota && Date.parse(quota.resetsAt) > Date.now() ? quota : null, error: quotaError, loading: Boolean(quotaLoad) };
+}
+
+export async function refreshQuota() {
+  if (!getAuthStatus()?.signedIn) return;
+  if (quotaLoad) return quotaLoad;
+  const generation = quotaGeneration;
+  const loading = (async () => {
+    await Promise.resolve(); // Assign quotaLoad before any synchronous failure.
+    try {
+      if (navigator.onLine === false) throw new Error();
+      const token = await getFirebaseIdToken()?.();
+      if (!token || generation !== quotaGeneration) return;
+      const response = await fetch(AI_ENDPOINT, {
+        method: "POST", headers: authHeaders(token), body: JSON.stringify({ action: "usage" }),
+        cache: "no-store", signal: AbortSignal.timeout(15_000),
+      });
+      const data = await response.json();
+      if (!response.ok || !acceptQuota(data.quota, generation)) throw new Error();
+    } catch {
+      if (generation === quotaGeneration) quotaError = "Не удалось обновить остаток. Повторите попытку.";
+    } finally {
+      if (generation === quotaGeneration) { quotaLoad = null; notify(); }
+    }
+  })();
+  quotaLoad = loading;
+  notify();
+  return loading;
+}
 
 export function onAiStateChange(handler) {
   listeners.add(handler);
@@ -35,7 +88,7 @@ export function availability() {
     : !auth || auth.state === "loading" ? "Подключаем аккаунт — ИИ пока недоступен."
       : auth.state === "error" ? "Сервис входа недоступен. Повторите подключение в профиле."
         : !auth.signedIn ? "Для ИИ нужен вход в аккаунт."
-          : tokenError || serviceError;
+          : tokenError || (quotaState().quota?.remaining === 0 ? "Месячный лимит ИИ исчерпан. Обновление 1-го числа (UTC)." : serviceError);
   return { reason, busy: activeRequests > 0, signedIn: Boolean(auth?.signedIn) };
 }
 
@@ -72,6 +125,7 @@ function logResponse(response) {
 }
 
 export async function requestAiAdvice(options) {
+  const generation = quotaGeneration;
   const { timeline, ...fetchOptions } = options;
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
@@ -81,6 +135,7 @@ export async function requestAiAdvice(options) {
   try {
     const response = await fetch(AI_ENDPOINT, { ...fetchOptions, signal: controller.signal });
     logResponse(response);
+    try { acceptQuota((await response.clone().json()).quota, generation); } catch { /* Response errors are handled by the caller. */ }
     if (response.ok) serviceError = "";
     else if (response.status === 401 || response.status === 403) serviceError = "Не удалось подтвердить доступ к ИИ. Повторите вход в профиле.";
     else if (response.status === 429 || response.status >= 500) serviceError = "ИИ временно недоступен. Можно повторить запрос позже.";
@@ -106,7 +161,7 @@ export async function askAi({ message, image = null, timeline = null }) {
   const response = await requestAiAdvice({
     timeline,
     method: "POST",
-    headers: { "Content-Type": "application/json", [new URL(AI_ENDPOINT).hostname === "functions.yandexcloud.net" ? "X-X20-Authorization" : "Authorization"]: `Bearer ${token}` },
+    headers: authHeaders(token),
     body: JSON.stringify({ message, ...(image ? { image } : {}) }),
   });
   const body = await response.text();
@@ -126,3 +181,11 @@ export function clearServiceError() {
 
 window.addEventListener("nutrition-auth-status", notify);
 window.addEventListener("offline", notify);
+window.addEventListener("nutrition-auth-changed", () => {
+  quotaGeneration++;
+  quota = null;
+  quotaError = "";
+  quotaLoad = null;
+  serviceError = "";
+  notify();
+});
