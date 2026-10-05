@@ -10,6 +10,36 @@ export function readFileAsDataUrl(file) {
   });
 }
 
+// Keep the whole JSON request below the API Gateway limit, including Base64.
+export async function preparePhoto(file) {
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type)) throw new Error("Используйте JPEG, PNG или WebP");
+  const image = new Image();
+  const url = URL.createObjectURL(file);
+  try {
+    await new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = () => reject(new Error("Не удалось прочитать фото"));
+      image.src = url;
+    });
+    const scale = Math.min(1, 1600 / Math.max(image.naturalWidth, image.naturalHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Не удалось обработать фото");
+    context.fillStyle = "white";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    for (const quality of [0.85, 0.7, 0.55, 0.4]) {
+      const dataUrl = canvas.toDataURL("image/jpeg", quality);
+      if (dataUrl.startsWith("data:image/jpeg;base64,") && dataUrl.length <= 1_400_000) {
+        return { dataUrl, mimeType: "image/jpeg" };
+      }
+    }
+    throw new Error("Не удалось уменьшить фото. Выберите другое изображение.");
+  } finally { URL.revokeObjectURL(url); }
+}
+
 export function openPhotoPicker(button, input) {
   if (!button || !input) return;
   document.getElementById("photoSourcePicker")?.remove();

@@ -25,9 +25,9 @@ jobs:
           mkdir -p deploy
           cp index.html deploy/
           cp styles.css deploy/
-          cp app.js deploy/
+          cp -r js deploy/
           cp firebase-client.js deploy/
-          cp photo-picker.js deploy/
+          cp privacy.html terms.html deploy/
           cp pwa.js deploy/
           cp service-worker.js deploy/
           cp manifest.webmanifest deploy/

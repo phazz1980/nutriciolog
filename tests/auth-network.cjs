@@ -251,7 +251,7 @@ export const serverTimestamp=()=>0;
       await context.setOffline(false);
       await page.waitForFunction(() => !document.getElementById('calculateMealButton').classList.contains('ai-unavailable'));
       let status=502;
-      await page.route('**/api/advice',route=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(status===200?{advice:'OK',proposedMeal:null}:{error:'Unavailable'}),headers:{'Access-Control-Allow-Origin':'*'}}));
+      await page.route('https://functions.yandexcloud.net/d4evergfv4q48plpsdbu',route=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(status===200?{advice:'OK',proposedMeal:null}:{error:'Unavailable'}),headers:{'Access-Control-Allow-Origin':'*'}}));
       await page.evaluate(() => requestAiAdvice({method:'POST'}));
       assert.match(await button.getAttribute('class'), /ai-unavailable/);
       assert.match(await page.locator('#aiMealAvailabilityStatus').textContent(), /временно недоступен/);

@@ -15,7 +15,7 @@ function corsHeaders(request) {
   return {
     "Access-Control-Allow-Origin": ALLOWED_ORIGINS.has(origin) ? origin : DEFAULT_ORIGIN,
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-X20-Authorization",
     "Vary": "Origin",
   };
 }
@@ -59,7 +59,7 @@ export default {
       if (image && !provider.supportsVision) {
         return json({ advice: "Этот ИИ пока не умеет анализировать фото. Опишите, пожалуйста, блюдо и примерную порцию текстом.", proposedMeal: null, proposedProducts: [] }, 200, request);
       }
-      const result = await provider.advise(message.trim(), image);
+      const result = await provider.advise(message.trim(), image, AbortSignal.timeout(45_000));
       return json(result, 200, request);
     } catch (error) {
       return errorResponse(error, request);
@@ -68,6 +68,7 @@ export default {
 };
 
 function errorResponse(error, request) {
+  if (error?.name === "TimeoutError" || error?.name === "AbortError") return json({ error: "ИИ не ответил вовремя. Повторите запрос позже." }, 504, request);
   if (error instanceof AccessError) return json({ error: error.message }, 401, request);
   if (!(error instanceof Error)) return json({ error: "Некорректный запрос." }, 400, request);
   if (error.message === "Blackroute provider is missing its Worker secret") {
