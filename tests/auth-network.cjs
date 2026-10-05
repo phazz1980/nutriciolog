@@ -51,7 +51,7 @@ export const serverTimestamp=()=>0;
     const file = path.join(root, new URL(req.url, 'http://localhost').pathname.replace(/^\//, '') || 'index.html');
     if (!file.startsWith(root + path.sep)) { res.writeHead(403).end(); return; }
     try {
-      res.setHeader('Content-Type', file.endsWith('.js') ? 'text/javascript' : file.endsWith('.html') ? 'text/html; charset=utf-8' : 'application/octet-stream');
+      res.setHeader('Content-Type', file.endsWith('.js') ? 'text/javascript; charset=utf-8' : file.endsWith('.css') ? 'text/css; charset=utf-8' : file.endsWith('.html') ? 'text/html; charset=utf-8' : 'application/octet-stream');
       res.setHeader('Cache-Control', 'no-store');
       res.end(fs.readFileSync(file));
     } catch { res.writeHead(404).end(); }
@@ -277,6 +277,55 @@ export const serverTimestamp=()=>0;
         }
       }
       for(const id of ['protein','fat','carbs'])assert.equal(await page.locator('#'+id).getAttribute('placeholder'),null);
+    });
+
+    await check('Quota shows server balance, handles exhaustion, isolates accounts and ignores late responses', {}, async ({ page }) => {
+      let used = 999, holdUsage = false, delayedRoute, calls = 0;
+      const month = new Date().toISOString().slice(0, 7);
+      const now = new Date();
+      const resetsAt = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString();
+      const quota = count => ({ unit: 'requests', limit: 1000, used: count, remaining: 1000 - count, period: month, resetsAt });
+      const fulfill = (route, data, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data), headers: { 'Access-Control-Allow-Origin': '*' } });
+      await page.route('https://functions.yandexcloud.net/d4evergfv4q48plpsdbu', async route => {
+        const body = route.request().postDataJSON();
+        if (body.action === 'usage') {
+          if (holdUsage) { delayedRoute = route; return; }
+          return fulfill(route, { quota: quota(used) });
+        }
+        calls++;
+        if (used >= 1000) return fulfill(route, { error: 'Лимит исчерпан', code: 'quota_exceeded', quota: quota(used) }, 429);
+        used++;
+        return fulfill(route, { advice: 'OK', proposedMeal: null, quota: quota(used) });
+      });
+      await page.evaluate(() => {
+        window.test.setUser({ uid: 'quota-a', displayName: 'Quota', getIdToken: async () => 'test-token' });
+        show('profile');
+      });
+      await page.waitForFunction(() => document.getElementById('aiQuotaStatus').textContent.startsWith('Осталось 1 из'));
+      await page.evaluate(async () => { const ai = await import('./js/ai-client.js'); await ai.askAi({ message: 'Обед' }); });
+      await page.waitForFunction(() => document.getElementById('aiQuotaStatus').textContent.startsWith('Осталось 0 из'));
+      const code = await page.evaluate(async () => (await (await import('./js/ai-client.js')).askAi({ message: 'Обед' })).data.code);
+      assert.equal(code, 'quota_exceeded');
+      assert.equal(calls, 2);
+      assert.match(await page.locator('#aiAvailabilityStatus').textContent(), /лимит/);
+      // A pending read for account A must not overwrite the new account's balance.
+      holdUsage = true;
+      await page.locator('#refreshAiQuotaButton').click();
+      await page.waitForFunction(async () => (await import('./js/ai-client.js')).quotaState().loading);
+      const pendingDeadline = Date.now() + 8000;
+      while (!delayedRoute && Date.now() < pendingDeadline) await new Promise(resolve => setTimeout(resolve, 10));
+      assert.ok(delayedRoute, 'Quota read did not reach the mocked gateway');
+      used = 0;
+      holdUsage = false;
+      await page.evaluate(() => window.test.setUser({ uid: 'quota-b', getIdToken: async () => 'test-token-b' }));
+      await page.waitForFunction(async () => (await import('./js/ai-client.js')).quotaState().quota?.used === 0);
+      await fulfill(delayedRoute, { quota: quota(1000) });
+      await page.waitForFunction(async () => !(await import('./js/ai-client.js')).quotaState().loading);
+      assert.equal(await page.evaluate(async () => (await import('./js/ai-client.js')).quotaState().quota.used), 0);
+      if (process.env.QUOTA_SCREENSHOT) await page.screenshot({ path: process.env.QUOTA_SCREENSHOT });
+      await page.evaluate(() => window.test.setUser(null));
+      await page.waitForFunction(() => document.getElementById('aiQuotaStatus').textContent.includes('Войдите'));
+      assert.equal(await page.evaluate(async () => (await import('./js/ai-client.js')).quotaState().quota), null);
     });
 
     // SW behavior without a real Google connection or a persistent browser cache.

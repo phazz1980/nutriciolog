@@ -4,6 +4,7 @@ import { hasStore, has, call, loadProfile as loadStoredProfile, accountDefaults,
 import { toast, setText, showScreen, openModal, closeModal, openDialog, showAiDiagnostic, removeAiDiagnostic, setAiDebug, clearAiDebug, showCalculationResult } from "./ui.js";
 import { askAi, getAiToken, requestAiAdvice, clearErrors, clearServiceError, availability } from "./ai-client.js";
 import { initAiAvailability } from "./ai-availability.js";
+import { initAiQuota } from "./ai-quota.js";
 import { createMealTimeline } from "./timeline.js";
 import { preparePhoto, openPhotoPicker } from "./photo-picker.js";
 import { showPhotoRecognitionDialog, parseMealEstimate, fillMealForm, setFormNutrition, clearFormNutrition, readFormNutrition, toastPhotoTransfer } from "./photo.js";
@@ -1721,6 +1722,7 @@ function boot() {
   initDiaryCalendar();
   initViewport();
   initAiAvailability();
+  initAiQuota();
 
   // Хранилище создаётся модулем firebase-client.js до этого модуля, поэтому
   // начальная загрузка запускается напрямую, а события обслуживают обновления.
