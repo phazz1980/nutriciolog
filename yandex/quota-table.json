@@ -1,0 +1,11 @@
+{
+  "TableName": "ai_monthly_usage",
+  "AttributeDefinitions": [
+    { "AttributeName": "uid", "AttributeType": "S" },
+    { "AttributeName": "period", "AttributeType": "S" }
+  ],
+  "KeySchema": [
+    { "AttributeName": "uid", "KeyType": "HASH" },
+    { "AttributeName": "period", "KeyType": "RANGE" }
+  ]
+}

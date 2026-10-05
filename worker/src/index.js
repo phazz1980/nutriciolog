@@ -1,7 +1,8 @@
 import { getProvider } from "./providers/index.js";
 import { AiResponseFormatError } from "./providers/blackroute.js";
+import { userQuota, QuotaExceededError, QuotaUnavailableError } from "./quota.js";
 
-const WORKER_VERSION = "0.1.18";
+const WORKER_VERSION = "0.1.19";
 
 const ALLOWED_ORIGINS = new Set([
   "https://nutriciolog.pages.dev",
@@ -35,9 +36,11 @@ export default {
         textModel: env.BLACKROUTE_MODEL || null,
         visionModel: env.BLACKROUTE_VISION_MODEL || null,
         apiKeyConfigured: Boolean(env.BLACKROUTE_API_KEY),
+        quotaConfigured: Boolean(env.AI_QUOTA_STORE),
       }, 200, request);
     }
     if (request.method !== "POST") return json({ error: "Method not allowed" }, 405, request);
+    let quota;
     try {
       const claims = await verifyFirebaseToken(request.headers.get("Authorization"));
       let payload;
@@ -46,7 +49,10 @@ export default {
       } catch {
         return json({ error: "Тело запроса должно быть корректным JSON." }, 400, request);
       }
-      const { message, image = null, model = null } = payload || {};
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) return json({ error: "Тело запроса должно быть объектом." }, 400, request);
+      if (payload.action === "usage") return json({ quota: await userQuota(env, claims.sub) }, 200, request);
+      if (payload.action !== undefined) return json({ error: "Неизвестное действие." }, 400, request);
+      const { message, image = null, model = null } = payload;
       if (typeof message !== "string" || !message.trim() || message.length > MAX_MESSAGE_LENGTH) {
         return json({ error: `Введите вопрос до ${MAX_MESSAGE_LENGTH} символов.` }, 400, request);
       }
@@ -59,15 +65,20 @@ export default {
       if (image && !provider.supportsVision) {
         return json({ advice: "Этот ИИ пока не умеет анализировать фото. Опишите, пожалуйста, блюдо и примерную порцию текстом.", proposedMeal: null, proposedProducts: [] }, 200, request);
       }
+      quota = await userQuota(env, claims.sub, true);
       const result = await provider.advise(message.trim(), image, AbortSignal.timeout(45_000));
-      return json(result, 200, request);
+      return json({ ...result, quota }, 200, request);
     } catch (error) {
-      return errorResponse(error, request);
+      const response = errorResponse(error, request);
+      if (!quota) return response;
+      return json({ ...await response.json(), quota }, response.status, request);
     }
   },
 };
 
 function errorResponse(error, request) {
+  if (error instanceof QuotaExceededError) return json({ error: error.message, code: "quota_exceeded", quota: error.quota }, 429, request);
+  if (error instanceof QuotaUnavailableError) return json({ error: error.message, code: "quota_unavailable" }, 503, request);
   if (error?.name === "TimeoutError" || error?.name === "AbortError") return json({ error: "ИИ не ответил вовремя. Повторите запрос позже." }, 504, request);
   if (error instanceof AccessError) return json({ error: error.message }, 401, request);
   if (!(error instanceof Error)) return json({ error: "Некорректный запрос." }, 400, request);
@@ -126,7 +137,7 @@ async function verifyFirebaseToken(authorization) {
 
 async function getFirebaseJwk(kid) {
   if (Date.now() >= firebaseJwks.expiresAt || !firebaseJwks.keys[kid]) {
-    const response = await fetch(FIREBASE_JWKS_URL);
+    const response = await fetch(FIREBASE_JWKS_URL, { signal: AbortSignal.timeout(4000) });
     if (!response.ok) throw new AccessError("Не удалось проверить вход.");
     const maxAge = Number((response.headers.get("Cache-Control") || "").match(/max-age=(\d+)/)?.[1] || 300);
     const payload = await response.json();
@@ -148,5 +159,5 @@ function base64UrlToBytes(value) {
 }
 
 function json(body, status = 200, request) {
-  return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders(request), "Content-Type": "application/json; charset=utf-8" } });
+  return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders(request), "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } });
 }

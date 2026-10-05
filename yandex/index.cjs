@@ -33,7 +33,14 @@ function createHandler(worker, env = process.env) {
   };
 }
 module.exports.createHandler = createHandler;
-module.exports.handler = async event => {
+module.exports.handler = async (event, context) => {
   const { default: worker } = await import('./worker/src/index.js');
-  return createHandler(worker)(event);
+  const env = { ...process.env };
+  if (env.YDB_DOCAPI_ENDPOINT && context?.token?.access_token) {
+    const { createYdbQuotaStore } = await import('./worker/src/quota-ydb.js');
+    try {
+      env.AI_QUOTA_STORE = createYdbQuotaStore({ endpoint: env.YDB_DOCAPI_ENDPOINT, table: env.YDB_QUOTA_TABLE, token: context.token.access_token });
+    } catch { /* Missing/invalid configuration fails closed in the shared gateway. */ }
+  }
+  return createHandler(worker, env)(event);
 };
