@@ -2,7 +2,7 @@ import { AI_TIMEOUT_MS } from "./core.js";
 import { getAuthErrorMessage, getAuthStatus, getFirebaseIdToken } from "./storage.js";
 import { toast } from "./ui.js";
 
-export const AI_ENDPOINT = "https://my-nutritionist-advice.340052.workers.dev/api/advice";
+export const AI_ENDPOINT = "https://functions.yandexcloud.net/d4evergfv4q48plpsdbu";
 
 const listeners = new Set();
 let tokenError = "";
@@ -106,7 +106,7 @@ export async function askAi({ message, image = null, timeline = null }) {
   const response = await requestAiAdvice({
     timeline,
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    headers: { "Content-Type": "application/json", [new URL(AI_ENDPOINT).hostname === "functions.yandexcloud.net" ? "X-X20-Authorization" : "Authorization"]: `Bearer ${token}` },
     body: JSON.stringify({ message, ...(image ? { image } : {}) }),
   });
   const body = await response.text();
