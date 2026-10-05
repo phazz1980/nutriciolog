@@ -41,7 +41,7 @@ export const getDoc=async parts=>{
   return {exists:()=>false};
 };
 export const getDocs=async()=>({docs:[]});
-export const setDoc=async(...args)=>{if(window.test.failSave)throw new Error('Offline');window.test.writes.push(args)};
+export const setDoc=async(...args)=>{if(window.test.failSave){const error=new Error('Offline');error.code=window.test.failSaveCode||'unavailable';throw error}window.test.writes.push(args)};
 export const deleteDoc=async()=>{};
 export const serverTimestamp=()=>0;
 `;
@@ -208,7 +208,7 @@ export const serverTimestamp=()=>0;
       assert.equal(await page.evaluate(() => localStorage.getItem('my-nutritionist:account:B:profile:v1:')), null);
     });
 
-    await check('Saving updates the cache; a late read or failed save cannot replace it', { holdProfile: true }, async ({ page }) => {
+    await check('Saving updates the cache; a late read cannot replace it and a temporary failure is retained locally', { holdProfile: true }, async ({ page }) => {
       await page.waitForFunction(() => window.getFirebaseAuthStatus().state === 'ready');
       await page.evaluate(() => {
         localStorage.setItem('my-nutritionist:account:A:profile:v1:', JSON.stringify({version:1,profile:{name:'Cached'}}));
@@ -219,7 +219,26 @@ export const serverTimestamp=()=>0;
       await page.evaluate(() => window.test.profileReads[0].resolve({name:'Old'}));
       assert.equal(await page.locator('#profileName').textContent(), 'Saved');
       await page.evaluate(async () => {window.test.failSave=true;await window.nutritionStore.saveProfile({name:'Failed'}).catch(()=>{});});
-      assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('my-nutritionist:account:A:profile:v1:')).profile.name), 'Saved');
+      assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('my-nutritionist:account:A:profile:v1:')).profile.name), 'Failed');
+      assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('my-nutritionist:account:A:pending-writes:v1:')).length), 1);
+    });
+
+    await check('Temporary Firestore failures are queued per account and replayed after reconnect', {}, async ({ page }) => {
+      await page.waitForFunction(() => window.getFirebaseAuthStatus().state === 'ready');
+      await page.evaluate(() => window.test.setUser({uid:'A',email:'a@example.invalid'}));
+      const result = await page.evaluate(async () => {
+        window.test.failSave = true;
+        const saved = await window.nutritionStore.saveDiaryEntry({id:'offline-entry',date:'2026-10-05',title:'Offline',calories:100});
+        const visible = await window.nutritionStore.loadDiaryEntries('2026-10-05');
+        return { saved, visible, pending: JSON.parse(localStorage.getItem('my-nutritionist:account:A:pending-writes:v1:')) };
+      });
+      assert.equal(result.saved.mode, 'queued');
+      assert.equal(result.visible[0].title, 'Offline');
+      assert.equal(result.pending.length, 1);
+      assert.match(await page.locator('#firebaseStatus').textContent(), /ожидают отправки 1/);
+      await page.evaluate(() => { window.test.failSave = false; window.dispatchEvent(new Event('online')); });
+      await page.waitForFunction(() => window.test.writes.some(write => write[0][3] === 'foodDiary' && write[0][4] === 'offline-entry'));
+      await page.waitForFunction(() => localStorage.getItem('my-nutritionist:account:A:pending-writes:v1:') === null);
     });
 
     await check('Corrupt or unavailable local storage does not prevent a cloud profile read', { holdProfile: true }, async ({ page }) => {

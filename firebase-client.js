@@ -30,6 +30,97 @@ const reportDebug = detail => window.dispatchEvent(new CustomEvent("nutrition-de
 let profileGeneration = 0, profileRefresh = null, profileSaving = false;
 const profileCacheKey = uid => key(`account:${uid}:profile:v1`);
 const latestProfileCacheKey = key("account:latest-profile:v1");
+const pendingWritesKey = uid => key(`account:${uid}:pending-writes:v1`);
+let pendingFlush = null;
+
+// Firestore may be temporarily unavailable while the user is travelling or
+// switching networks. Keep a small, UID-scoped outbox locally: it contains
+// only the document payload already entered in the app, never credentials or
+// Firebase tokens. The last action for a document wins.
+function pendingWrites(uid = user?.uid) {
+  if (!uid) return [];
+  try {
+    const value = JSON.parse(localStorage.getItem(pendingWritesKey(uid)) || "[]");
+    return Array.isArray(value) ? value.filter(item => item && typeof item.collection === "string" && typeof item.id === "string" && ["set", "delete"].includes(item.action)) : [];
+  } catch { return []; }
+}
+
+function storePendingWrites(uid, writes) {
+  try {
+    if (writes.length) localStorage.setItem(pendingWritesKey(uid), JSON.stringify(writes));
+    else localStorage.removeItem(pendingWritesKey(uid));
+    publishSyncStatus(uid, writes.length);
+    return true;
+  } catch { return false; }
+}
+
+function publishSyncStatus(uid = user?.uid, count = pendingWrites(uid).length) {
+  window.dispatchEvent(new CustomEvent("nutrition-sync-status", { detail: { uid: uid || "", pending: count } }));
+}
+
+function queueWrite(action, collection, id, value, uid = user?.uid) {
+  if (!uid) return false;
+  const writes = pendingWrites(uid).filter(item => item.collection !== collection || item.id !== id);
+  writes.push({ opId: crypto.randomUUID(), action, collection, id, ...(action === "set" ? { value } : {}) });
+  return storePendingWrites(uid, writes);
+}
+
+function pendingWriteFor(collection, id, uid = user?.uid) {
+  const writes = pendingWrites(uid);
+  for (let index = writes.length - 1; index >= 0; index--) {
+    if (writes[index].collection === collection && writes[index].id === id) return writes[index];
+  }
+  return null;
+}
+
+function overlayPendingDocument(collection, id, value, uid = user?.uid) {
+  const pending = pendingWriteFor(collection, id, uid);
+  if (!pending) return value;
+  return pending.action === "delete" ? null : { ...pending.value, id: pending.value?.id || id };
+}
+
+function overlayPendingCollection(collection, values, uid = user?.uid) {
+  const byId = new Map((values || []).map(value => [String(value?.id || ""), value]));
+  for (const pending of pendingWrites(uid).filter(item => item.collection === collection)) {
+    if (pending.action === "delete") byId.delete(pending.id);
+    else byId.set(pending.id, { ...pending.value, id: pending.value?.id || pending.id });
+  }
+  return [...byId.values()];
+}
+
+function isTemporaryFirestoreError(error) {
+  const code = String(error?.code || "").toLowerCase();
+  return navigator.onLine === false || ["unavailable", "deadline-exceeded", "aborted", "cancelled", "internal", "unknown", "network-request-failed"].some(part => code.includes(part));
+}
+
+async function flushPendingWrites() {
+  if (pendingFlush || !configured || !user || !db || navigator.onLine === false) return pendingFlush;
+  const uid = user.uid;
+  const writes = pendingWrites(uid);
+  if (!writes.length) return;
+  pendingFlush = (async () => {
+    for (const pending of writes) {
+      // Stop on a temporary failure and preserve this and later operations.
+      try {
+        const { doc, setDoc, deleteDoc, serverTimestamp } = window.__firestore;
+        const reference = doc(db, "users", uid, pending.collection, pending.id);
+        if (pending.action === "delete") await deleteDoc(reference);
+        else await setDoc(reference, { ...pending.value, updatedAt: serverTimestamp() }, { merge: true });
+        const current = pendingWrites(uid);
+        const remaining = current.filter(item => item.opId !== pending.opId);
+        storePendingWrites(uid, remaining);
+        reportDebug({ type: "sync", mode: "flushed", collection: pending.collection });
+      } catch (error) {
+        reportDebug({ type: "sync", mode: "deferred", collection: pending.collection, reason: String(error?.code || error?.message || "Unknown").slice(0, 180) });
+        if (isTemporaryFirestoreError(error)) break;
+        // A permanent error must not block unrelated queued documents forever.
+        const remaining = pendingWrites(uid).filter(item => item.opId !== pending.opId);
+        storePendingWrites(uid, remaining);
+      }
+    }
+  })().finally(() => { pendingFlush = null; updateStatus(); });
+  return pendingFlush;
+}
 
 // Cache only display fields, never Firebase users, credentials or tokens.
 function profileFields(value) {
@@ -94,7 +185,7 @@ function refreshAccountProfile(uid) {
     const { doc, getDoc } = window.__firestore;
     const snapshot = await getDoc(doc(db, "users", uid, "profile", "main"));
     if (user?.uid !== uid || generation !== profileGeneration) return cachedProfile(uid)?.profile ?? null;
-    const profile = snapshot.exists() ? profileFields(snapshot.data()) : null;
+    const profile = profileFields(overlayPendingDocument("profile", "main", snapshot.exists() ? snapshot.data() : null));
     cacheProfile(uid, profile);
     publishProfile(uid, profile);
     return profile;
@@ -222,6 +313,8 @@ async function loadProfile() {
     const localProfile = localStorage.getItem(key("profile:main"));
     return localProfile ? JSON.parse(localProfile) : null;
   }
+  const queued = overlayPendingDocument("profile", "main", null, user.uid);
+  if (queued) return profileFields(queued);
   const cached = cachedProfile(user.uid);
   const refresh = refreshAccountProfile(user.uid);
   if (cached) {
@@ -274,6 +367,7 @@ async function connectFirebase() {
     updateStatus();
     reportDebug({ type: "auth", configured, signedIn: Boolean(current) });
     window.dispatchEvent(new Event("nutrition-auth-changed"));
+    flushPendingWrites().catch(() => {});
     resolve();
   }, reject));
 }
@@ -304,7 +398,8 @@ function updateStatus() {
     const screen = document.getElementById("profile");
     if (screen) screen.prepend(element);
   }
-  if (element) element.textContent = !configured ? "Локальный режим: Firebase пока не подключён" : user ? `Синхронизация: ${user.email || "аккаунт подключён"}` : guestMode ? "Гостевой режим: данные сохраняются на этом устройстве" : authState === "loading" ? "Подключаемся и восстанавливаем вход…" : authState === "error" ? "Сервис входа недоступен" : "Войдите, чтобы синхронизировать данные";
+  const pending = user ? pendingWrites(user.uid).length : 0;
+  if (element) element.textContent = !configured ? "Локальный режим: Firebase пока не подключён" : user ? (pending ? `Синхронизация: ожидают отправки ${pending} изм.` : `Синхронизация: ${user.email || "аккаунт подключён"}`) : guestMode ? "Гостевой режим: данные сохраняются на этом устройстве" : authState === "loading" ? "Подключаемся и восстанавливаем вход…" : authState === "error" ? "Сервис входа недоступен" : "Войдите, чтобы синхронизировать данные";
   updateAuthUI();
   window.dispatchEvent(new Event("nutrition-auth-status"));
 }
@@ -417,6 +512,15 @@ async function save(collection, id, value) {
     reportDebug({ type: "save", mode: "cloud", collection });
     return { mode: "cloud" };
   } catch (error) {
+    if (isTemporaryFirestoreError(error) && queueWrite("set", collection, id, value, uid)) {
+      if (isProfile && user?.uid === uid && generation === profileGeneration) {
+        cacheProfile(uid, value);
+        publishProfile(uid, profileFields(value));
+      }
+      reportDebug({ type: "save", mode: "queued", collection });
+      updateStatus();
+      return { mode: "queued" };
+    }
     reportDebug({ type: "save", mode: "error", collection, reason: String(error?.code || error?.message || "Неизвестная ошибка").slice(0, 180) });
     throw error;
   } finally {
@@ -434,9 +538,14 @@ async function loadProduct(name) {
   if (!normalizedName) return null;
   const localProduct = localStorage.getItem(key("products", normalizedName));
   if (!configured || !user || !db) return localProduct ? JSON.parse(localProduct) : null;
-  const { doc, getDoc } = window.__firestore;
-  const snapshot = await getDoc(doc(db, "users", user.uid, "products", normalizedName));
-  return snapshot.exists() ? snapshot.data() : null;
+  try {
+    const { doc, getDoc } = window.__firestore;
+    const snapshot = await getDoc(doc(db, "users", user.uid, "products", normalizedName));
+    return overlayPendingDocument("products", normalizedName, snapshot.exists() ? snapshot.data() : null);
+  } catch (error) {
+    if (isTemporaryFirestoreError(error)) return overlayPendingDocument("products", normalizedName, null);
+    throw error;
+  }
 }
 
 async function listProducts() {
@@ -451,9 +560,16 @@ async function listProducts() {
       } catch { return []; }
     });
   }
-  const { collection, getDocs } = window.__firestore;
-  const snapshot = await getDocs(collection(db, "users", user.uid, "products"));
-  return snapshot.docs.map(document => document.data()).filter(product => typeof product?.title === "string" && product.title.trim());
+  try {
+    const { collection, getDocs } = window.__firestore;
+    const snapshot = await getDocs(collection(db, "users", user.uid, "products"));
+    return overlayPendingCollection("products", snapshot.docs.map(document => ({ ...document.data(), id: document.id })))
+      .filter(product => typeof product?.title === "string" && product.title.trim());
+  } catch (error) {
+    if (isTemporaryFirestoreError(error)) return overlayPendingCollection("products", [])
+      .filter(product => typeof product?.title === "string" && product.title.trim());
+    throw error;
+  }
 }
 
 async function saveProduct(product) {
@@ -486,10 +602,20 @@ async function deleteProduct(name) {
     reportDebug({ type: "delete", mode: "local", collection: "products" });
     return { mode: "local" };
   }
-  const { deleteDoc, doc } = window.__firestore;
-  await deleteDoc(doc(db, "users", user.uid, "products", normalizedName));
-  reportDebug({ type: "delete", mode: "cloud", collection: "products" });
-  return { mode: "cloud" };
+  const uid = user.uid;
+  try {
+    const { deleteDoc, doc } = window.__firestore;
+    await deleteDoc(doc(db, "users", uid, "products", normalizedName));
+    reportDebug({ type: "delete", mode: "cloud", collection: "products" });
+    return { mode: "cloud" };
+  } catch (error) {
+    if (isTemporaryFirestoreError(error) && queueWrite("delete", "products", normalizedName, null, uid)) {
+      reportDebug({ type: "delete", mode: "queued", collection: "products" });
+      updateStatus();
+      return { mode: "queued" };
+    }
+    throw error;
+  }
 }
 
 async function loadWaterLog(date) {
@@ -500,9 +626,14 @@ async function loadWaterLog(date) {
     const saved = localStorage.getItem(key(`waterLogs:${safeDate}`));
     try { return saved ? JSON.parse(saved) : null; } catch { return null; }
   }
-  const { doc, getDoc } = window.__firestore;
-  const snapshot = await getDoc(doc(db, "users", user.uid, "waterLogs", safeDate));
-  return snapshot.exists() ? snapshot.data() : null;
+  try {
+    const { doc, getDoc } = window.__firestore;
+    const snapshot = await getDoc(doc(db, "users", user.uid, "waterLogs", safeDate));
+    return overlayPendingDocument("waterLogs", safeDate, snapshot.exists() ? snapshot.data() : null);
+  } catch (error) {
+    if (isTemporaryFirestoreError(error)) return overlayPendingDocument("waterLogs", safeDate, null);
+    throw error;
+  }
 }
 
 async function loadDiaryEntries(date) {
@@ -516,9 +647,15 @@ async function loadDiaryEntries(date) {
       } catch { return []; }
     });
   }
-  const { collection, getDocs, query, where } = window.__firestore;
-  const snapshot = await getDocs(query(collection(db, "users", user.uid, "foodDiary"), where("date", "==", date)));
-  return snapshot.docs.map(document => ({ ...document.data(), id: document.id }));
+  try {
+    const { collection, getDocs, query, where } = window.__firestore;
+    const snapshot = await getDocs(query(collection(db, "users", user.uid, "foodDiary"), where("date", "==", date)));
+    return overlayPendingCollection("foodDiary", snapshot.docs.map(document => ({ ...document.data(), id: document.id })))
+      .filter(entry => entry?.date === date);
+  } catch (error) {
+    if (isTemporaryFirestoreError(error)) return overlayPendingCollection("foodDiary", []).filter(entry => entry?.date === date);
+    throw error;
+  }
 }
 
 async function loadWeightEntries() {
@@ -532,9 +669,16 @@ async function loadWeightEntries() {
       } catch { return []; }
     });
   }
-  const { collection, getDocs } = window.__firestore;
-  const snapshot = await getDocs(collection(db, "users", user.uid, "weightEntries"));
-  return snapshot.docs.map(document => document.data()).filter(entry => entry?.date && Number.isFinite(Number(entry.weight)));
+  try {
+    const { collection, getDocs } = window.__firestore;
+    const snapshot = await getDocs(collection(db, "users", user.uid, "weightEntries"));
+    return overlayPendingCollection("weightEntries", snapshot.docs.map(document => ({ ...document.data(), id: document.id })))
+      .filter(entry => entry?.date && Number.isFinite(Number(entry.weight)));
+  } catch (error) {
+    if (isTemporaryFirestoreError(error)) return overlayPendingCollection("weightEntries", [])
+      .filter(entry => entry?.date && Number.isFinite(Number(entry.weight)));
+    throw error;
+  }
 }
 
 window.nutritionStore = {
@@ -557,9 +701,18 @@ window.nutritionStore = {
       localStorage.removeItem(key(`foodDiary:${id}`));
       return { mode: "local" };
     }
-    const { deleteDoc, doc } = window.__firestore;
-    await deleteDoc(doc(db, "users", user.uid, "foodDiary", id));
-    return { mode: "cloud" };
+    const uid = user.uid;
+    try {
+      const { deleteDoc, doc } = window.__firestore;
+      await deleteDoc(doc(db, "users", uid, "foodDiary", id));
+      return { mode: "cloud" };
+    } catch (error) {
+      if (isTemporaryFirestoreError(error) && queueWrite("delete", "foodDiary", String(id), null, uid)) {
+        updateStatus();
+        return { mode: "queued" };
+      }
+      throw error;
+    }
   },
   loadDiaryEntries,
   loadWeightEntries,
@@ -612,5 +765,6 @@ window.addProposedProduct = async product => {
 window.addEventListener("online", () => {
   if (authState === "error" && !appModuleFailed) initFirebase();
   if (user && db) refreshAccountProfile(user.uid).catch(() => {});
+  flushPendingWrites().catch(() => {});
 });
 updateStatus();

@@ -15,8 +15,12 @@ export function setText(id, text) {
 }
 
 export function showScreen(id) {
+  const target = document.getElementById(id);
+  // Экраны, отключённые разметкой (data-disabled), недоступны: иначе
+  // переключение на скрытый экран оставило бы пользователя с пустой страницей.
+  if (!target || target.dataset.disabled === "true") return;
   for (const screen of document.querySelectorAll(".screen")) screen.classList.remove("active");
-  document.getElementById(id)?.classList.add("active");
+  target.classList.add("active");
   for (const nav of document.querySelectorAll(".nav")) nav.classList.toggle("active", nav.dataset.nav === id);
 }
 
