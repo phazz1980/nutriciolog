@@ -9,7 +9,10 @@
     .meal-group-title{font-size:15px;line-height:1.2}
     .meal-group-total{margin-left:auto;white-space:nowrap;font-size:14px}
     .meal-group-body{padding:0 18px}
-    #plan,.nav[data-target="plan"],#planModal{display:none!important}
+    /* «План» отключён в интерфейсе: экран, кнопка навигации и модальное окно
+       помечены атрибутом data-disabled, чтобы селектор не зависел от имени
+       data-атрибута навигации. */
+    #plan[data-disabled],.nav[data-disabled],#planModal{display:none!important}
     .setting b + .hello::before{content:" · "}
     /* Keep form controls inside narrow grids and avoid iOS focus zoom. */
     .row{grid-template-columns:repeat(2,minmax(0,1fr))}

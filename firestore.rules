@@ -1,8 +1,81 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{userId}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    function signedInOwner(userId) { return request.auth != null && request.auth.uid == userId; }
+    function validDate(value) { return value is string && value.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'); }
+    function validNumber(value, min, max) { return value is number && value >= min && value <= max; }
+    function hasOnly(data, fields) { return data.keys().hasOnly(fields); }
+
+    function validProfile(data) {
+      return hasOnly(data, ['name', 'age', 'height', 'weight', 'targetWeight', 'goal', 'calories', 'updatedAt'])
+        && (!('name' in data) || (data.name is string && data.name.size() > 0 && data.name.size() <= 50))
+        && (!('age' in data) || validNumber(data.age, 12, 120))
+        && (!('height' in data) || validNumber(data.height, 50, 250))
+        && (!('weight' in data) || validNumber(data.weight, 20, 500))
+        && (!('targetWeight' in data) || validNumber(data.targetWeight, 20, 500))
+        && (!('goal' in data) || data.goal in ['Похудение', 'Поддержание веса', 'Набор веса'])
+        && (!('calories' in data) || validNumber(data.calories, 800, 6000))
+        && data.updatedAt is timestamp;
+    }
+
+    function validDiaryEntry(data) {
+      return hasOnly(data, ['id', 'date', 'mealType', 'title', 'portion', 'portionUnit', 'unitWeight', 'calories', 'protein', 'fat', 'carbs', 'source', 'updatedAt'])
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 100 && validDate(data.date)
+        && data.mealType in ['Завтрак', 'Обед', 'Ужин', 'Перекус']
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 200
+        && (!('portion' in data) || data.portion == null || validNumber(data.portion, 0, 10000))
+        && (!('portionUnit' in data) || data.portionUnit in ['г', 'мл', 'шт.'])
+        && (!('unitWeight' in data) || validNumber(data.unitWeight, 1, 5000))
+        && validNumber(data.calories, 0, 50000) && validNumber(data.protein, 0, 5000)
+        && validNumber(data.fat, 0, 5000) && validNumber(data.carbs, 0, 5000)
+        && data.source is string && data.source.size() <= 80 && data.updatedAt is timestamp;
+    }
+
+    function validProduct(data) {
+      return hasOnly(data, ['title', 'normalizedName', 'portion', 'unitWeight', 'calories', 'protein', 'fat', 'carbs', 'aiClarification', 'updatedAt'])
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 200
+        && data.normalizedName is string && data.normalizedName.size() > 0 && data.normalizedName.size() <= 120
+        && (!('portion' in data) || data.portion == null || validNumber(data.portion, 0, 10000))
+        && (!('unitWeight' in data) || validNumber(data.unitWeight, 1, 5000))
+        && validNumber(data.calories, 0, 50000) && validNumber(data.protein, 0, 5000)
+        && validNumber(data.fat, 0, 5000) && validNumber(data.carbs, 0, 5000)
+        && (!('aiClarification' in data) || (data.aiClarification is map && hasOnly(data.aiClarification, ['question', 'additionalIngredients']) && data.aiClarification.question is string && data.aiClarification.question.size() <= 500 && data.aiClarification.additionalIngredients is string && data.aiClarification.additionalIngredients.size() <= 500))
+        && data.updatedAt is timestamp;
+    }
+
+    function validWaterLog(data) { return hasOnly(data, ['date', 'glasses', 'updatedAt']) && validDate(data.date) && validNumber(data.glasses, 0, 8) && data.updatedAt is timestamp; }
+    function validWeightEntry(data) { return hasOnly(data, ['date', 'weight', 'updatedAt']) && validDate(data.date) && validNumber(data.weight, 20, 500) && data.updatedAt is timestamp; }
+    function validDayPlan(data) { return hasOnly(data, ['date', 'meals', 'updatedAt']) && validDate(data.date) && data.meals is list && data.meals.size() <= 20 && data.updatedAt is timestamp; }
+
+    match /users/{userId}/profile/main {
+      allow read: if signedInOwner(userId);
+      allow create, update: if signedInOwner(userId) && validProfile(request.resource.data);
+      allow delete: if signedInOwner(userId);
+    }
+    match /users/{userId}/foodDiary/{entryId} {
+      allow read: if signedInOwner(userId);
+      allow create, update: if signedInOwner(userId) && validDiaryEntry(request.resource.data) && request.resource.data.id == entryId;
+      allow delete: if signedInOwner(userId);
+    }
+    match /users/{userId}/waterLogs/{date} {
+      allow read: if signedInOwner(userId);
+      allow create, update: if signedInOwner(userId) && validWaterLog(request.resource.data) && request.resource.data.date == date;
+      allow delete: if signedInOwner(userId);
+    }
+    match /users/{userId}/weightEntries/{date} {
+      allow read: if signedInOwner(userId);
+      allow create, update: if signedInOwner(userId) && validWeightEntry(request.resource.data) && request.resource.data.date == date;
+      allow delete: if signedInOwner(userId);
+    }
+    match /users/{userId}/products/{normalizedName} {
+      allow read: if signedInOwner(userId);
+      allow create, update: if signedInOwner(userId) && validProduct(request.resource.data) && request.resource.data.normalizedName == normalizedName;
+      allow delete: if signedInOwner(userId);
+    }
+    match /users/{userId}/dayPlans/{date} {
+      allow read: if signedInOwner(userId);
+      allow create, update: if signedInOwner(userId) && validDayPlan(request.resource.data) && request.resource.data.date == date;
+      allow delete: if signedInOwner(userId);
     }
   }
 }
