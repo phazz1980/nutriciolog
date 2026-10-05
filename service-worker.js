@@ -11,6 +11,7 @@ const SHELL = [
   "./js/app.js",
   "./js/ai-availability.js",
   "./js/ai-client.js",
+  "./js/ai-quota.js",
   "./js/core.js",
   "./js/date.js",
   "./js/photo-picker.js",
