@@ -15,13 +15,13 @@
 - `firebase-client.js` — Firebase Auth/Firestore и локальный fallback.
 - `firestore.rules` — правила доступа Firestore по UID пользователя.
 - `manifest.webmanifest`, `service-worker.js`, `pwa.js`, `notifications.js`, `icons/` — PWA и локальные уведомления.
-- `worker/` — Cloudflare Worker, единственная серверная точка для обращения к ИИ.
+- `worker/` — Cloudflare Worker, общие серверные модули ИИ; `yandex/` — адаптер Cloud Functions.
 - `README.md` — документация по развёртыванию и архитектурным решениям.
 
 ## Обязательные правила безопасности
 
 - Никогда не помещай `OPENAI_API_KEY` или другие приватные ключи/токены в Git, HTML, Firebase web config, `wrangler.toml`, логи или документацию.
-- OpenAI API вызывается только через Cloudflare Worker. Браузер не должен получать API-ключ.
+- AI API вызывается только через серверный шлюз (Yandex Cloud Functions или Cloudflare Worker). Браузер не должен получать API-ключ.
 - Firebase Web config является публичной клиентской конфигурацией; не путай её с серверными секретами.
 - Запись пользовательских данных в Firestore выполняется клиентским Firebase SDK под текущим пользователем и защищается `firestore.rules`.
 - Worker не должен получать Firebase service account и не должен напрямую записывать пользовательский дневник.
@@ -39,7 +39,7 @@
 - Фото блюда по умолчанию используется только для одного запроса и не сохраняется. Не добавляй постоянное хранение фото без отдельной задачи и правил Firebase Storage.
 - Голосовой ввод сейчас должен оставаться браузерным (Web Speech API / Speech Synthesis), если пользователь отдельно не попросил серверный realtime/audio режим.
 - Не меняй публичный контракт Worker `{ advice, proposedMeal }` без одновременной проверки клиента и документации.
-- При добавлении ИИ-провайдера сохраняй единый контракт и держи его секреты только в Cloudflare Worker secrets.
+- При добавлении ИИ-провайдера сохраняй единый контракт и держи его секреты только в серверном хранилище (Yandex Lockbox / Cloudflare Worker secrets).
 
 ## Проверка перед завершением задачи
 

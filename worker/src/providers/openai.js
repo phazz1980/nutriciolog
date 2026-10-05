@@ -9,12 +9,13 @@ export function createOpenAIProvider(apiKey) {
   if (!apiKey) throw new Error("OpenAI provider is missing its Worker secret");
   return {
     supportsVision: true,
-    async advise(message, image = null) {
+    async advise(message, image = null, signal = undefined) {
       const input = image
         ? [{ role: "user", content: [{ type: "input_text", text: message }, { type: "input_image", image_url: image.dataUrl }] }]
         : message;
       const response = await fetch("https://api.openai.com/v1/responses", {
         method: "POST",
+        signal,
         headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "gpt-4.1-mini",
