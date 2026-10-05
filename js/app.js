@@ -5,7 +5,7 @@ import { toast, setText, showScreen, openModal, closeModal, openDialog, showAiDi
 import { askAi, getAiToken, requestAiAdvice, clearErrors, clearServiceError, availability } from "./ai-client.js";
 import { initAiAvailability } from "./ai-availability.js";
 import { createMealTimeline } from "./timeline.js";
-import { readFileAsDataUrl, openPhotoPicker } from "./photo-picker.js";
+import { preparePhoto, openPhotoPicker } from "./photo-picker.js";
 import { showPhotoRecognitionDialog, parseMealEstimate, fillMealForm, setFormNutrition, clearFormNutrition, readFormNutrition, toastPhotoTransfer } from "./photo.js";
 
 /* ------------------------------------------------------------------ state */
@@ -1072,11 +1072,11 @@ async function recognizeMealPhoto(file) {
     button.textContent = "…";
   }
   try {
-    const dataUrl = await readFileAsDataUrl(file);
+    const image = await preparePhoto(file);
     const result = await askAi({
       timeline: createMealTimeline("photo"),
       message: "Распознай блюдо на фотографии. Верни один наиболее заметный продукт или блюдо с ориентировочными калориями, белками, жирами, углеводами и весом порции в граммах. Не сохраняй ничего.",
-      image: { dataUrl, mimeType: file.type },
+      image,
     });
     if (result.status === "error") {
       if (typeof result.data?.debugResponse === "string" && result.data.debugResponse) {
@@ -1477,7 +1477,7 @@ async function selectPhoto(file) {
     return;
   }
   try {
-    selectedPhoto = { dataUrl: await readFileAsDataUrl(file), mimeType: file.type };
+    selectedPhoto = await preparePhoto(file);
     const preview = element("photoPreview");
     preview.replaceChildren();
     preview.append(`Фото: ${file.name} `);
