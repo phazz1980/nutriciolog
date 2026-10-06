@@ -468,6 +468,28 @@ export const serverTimestamp=()=>0;
       assert.equal(await page.locator('#dailyAdvice').isHidden(),true);
     });
 
+    await check('Daily advice bounds a full diary and retries after a failed load', {}, async ({page}) => {
+      let posts=0;
+      await page.route('https://functions.yandexcloud.net/**', async route => {
+        const body=route.request().postDataJSON();
+        if(body.action==='usage') return route.fulfill({json:{}});
+        posts++;
+        assert.ok(body.message.length<=1000);
+        assert.match(body.message,/Всего записей: 20/);
+        await route.fulfill({status:posts===1?503:200,json:posts===1?{error:'Unavailable'}:{advice:'Добавьте овощи.'}});
+      });
+      await page.evaluate(()=>{
+        window.nutritionStore.loadDiaryEntries=async()=>Array.from({length:20},(_,i)=>({title:'Блюдо с длинным названием '+i,portion:200,calories:100,protein:5,fat:3,carbs:10}));
+        window.test.setUser({uid:'full-diary',getIdToken:async()=> 'test-token'});
+      });
+      await page.locator('#retryDailyAdvice').waitFor({state:'visible'});
+      await page.locator('#retryDailyAdvice').click();
+      await page.waitForFunction(()=>document.getElementById('dailyAdviceText').textContent==='Добавьте овощи.');
+      assert.equal(posts,2);
+      assert.equal(await page.evaluate(()=>window.test.writes.length),0);
+      await page.screenshot({path:require('node:os').tmpdir()+'/nutrition-advice.png',fullPage:true});
+    });
+
     const listeners = {}, stored = [];
     const cached = { ok: true, name: 'cached' };
     let fetchResult = () => new Promise(() => {});
