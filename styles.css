@@ -130,3 +130,5 @@
       .drop{width:clamp(20px,calc((100% - 21px)/8),29px)}
       .water>.secondary{flex:0 0 auto;padding:10px}
     }
+
+.daily-advice{margin-top:16px}.daily-advice h2{font-size:18px;margin:0 0 10px}.daily-advice p{line-height:1.5;margin:0 0 10px}.daily-advice small{color:var(--muted,#68766a);line-height:1.4}
