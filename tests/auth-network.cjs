@@ -399,6 +399,28 @@ export const serverTimestamp=()=>0;
       assert.equal(await page.evaluate(()=>window.test.writes.length),0);
     });
 
+    await check('Entering 2 after choosing eggs uses pieces, never 2 grams', {products:[{title:'Яйцо варёное',portion:100,calories:150,protein:13,fat:10,carbs:1}]}, async ({page}) => {
+      let calculations=0;
+      await page.route('https://functions.yandexcloud.net/**',async route=> {
+        const body=route.request().postDataJSON();
+        if(body.message?.includes('Оцени пищевую')) {calculations++;assert.match(body.message,/2 шт/);}
+        await route.fulfill({json:body.message?.includes('Оцени пищевую') ? {advice:'Оценка веса',proposedProducts:[{title:'Яйцо варёное',portion:100,calories:999,protein:0,fat:0,carbs:0}]} : {advice:'Тестовый совет'}});
+      });
+      await page.evaluate(()=>window.test.setUser({uid:'egg-input',getIdToken:async()=> 'test-token'}));
+      await page.locator('#todayAddMealButton').click();
+      await page.locator('#mealName').fill('Яйцо');
+      await page.locator('#calculateMealButton').click();
+      await page.locator('.meal-suggestion',{hasText:'Яйцо варёное'}).click();
+      await page.locator('#portion').fill('2');
+      assert.equal(await page.locator('#portionUnit').inputValue(),'шт.');
+      assert.notEqual(await page.locator('#calories').inputValue(),'3');
+      await page.locator('#calories').focus();
+      await page.waitForFunction(()=>document.getElementById('calories').value==='150');
+      assert.equal(calculations,1);
+      await page.locator('#portion').fill('4');
+      assert.equal(await page.locator('#calories').inputValue(),'300');
+    });
+
     await check('AI proposes a portion when separate weight is omitted', {}, async ({page}) => {
       await page.route('https://functions.yandexcloud.net/**', async route => {
         const body=route.request().postDataJSON();
