@@ -6,7 +6,7 @@ process.env.TZ = "Europe/Moscow";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { dateKey, todayKey, tomorrowKey, dateKeyFor, parseDateKey, minutesUntilNextLocalDay } from "../js/date.js";
-import { nutritionTargets, scaleNutrition, safeNumber, formatNumber, firstName, normalizeTitle, mealTypeRank, subtractNutrition } from "../js/core.js";
+import { parsePortionDescription, matchingProducts, nutritionTargets, scaleNutrition, safeNumber, formatNumber, firstName, normalizeTitle, mealTypeRank, subtractNutrition } from "../js/core.js";
 
 function withFakeNow(iso, run) {
   const Original = Date;
@@ -100,4 +100,20 @@ test("порядок приёмов пищи и вычитание БЖУ", () =
 test("formatNumber форматирует по-русски", () => {
   assert.equal(formatNumber(1234.56).replace(/\u00a0/g, " "), "1 234,6");
   assert.equal(formatNumber(0), "0");
+});
+
+
+test('Порция из названия сохраняет граммы и штуки, не принимает проценты за вес', () => {
+  assert.deepEqual(parsePortionDescription('2 яйца'), { title: 'яйца', amount: 2, unit: 'шт.' });
+  assert.deepEqual(parsePortionDescription('50гр сыра'), { title: 'сыра', amount: 50, unit: 'г' });
+  assert.deepEqual(parsePortionDescription('сыр 0,05 кг'), { title: 'сыр', amount: 50, unit: 'г' });
+  assert.equal(parsePortionDescription('сыр 45%').amount, null);
+  assert.equal(parsePortionDescription('0 г сыра').amount, null);
+  assert.equal(parsePortionDescription('10001 г сыра').amount, null);
+  assert.equal(parsePortionDescription('150 мл молока').unit, 'мл');
+});
+test('Личная база предлагает варианты продукта после удаления количества', () => {
+  const products = [{title:'Яйцо варёное'}, {title:'Сыр российский'}, {title:'Сыр творожный'}, {title:'Груша'}];
+  assert.deepEqual(matchingProducts(products, '2 яйца'), [products[0]]);
+  assert.deepEqual(matchingProducts(products, '50гр сыра'), [products[1],products[2]]);
 });
