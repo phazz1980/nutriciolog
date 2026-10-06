@@ -46,11 +46,9 @@ service cloud.firestore {
     function validWaterLog(data) { return hasOnly(data, ['date', 'glasses', 'updatedAt']) && validDate(data.date) && validNumber(data.glasses, 0, 8) && data.updatedAt is timestamp; }
     function validWeightEntry(data) { return hasOnly(data, ['date', 'weight', 'updatedAt']) && validDate(data.date) && validNumber(data.weight, 20, 500) && data.updatedAt is timestamp; }
     function validPlanItem(item) {
-      let name = item.name;
       let calories = item.calories;
-      let length = name.size();
       return item.keys().hasOnly(['name', 'calories'])
-        && name is string && length > 0 && length <= 200
+        && item.name.matches('^.{1,200}$')
         && calories is number && calories >= 0 && calories <= 50000;
     }
     function validPlanItems(items) {
