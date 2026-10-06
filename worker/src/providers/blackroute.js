@@ -37,8 +37,10 @@ export function createBlackrouteProvider(apiKey, model = "deepseek-v3.2-maas") {
   };
   return {
     supportsVision,
-    async advise(message, image = null, signal = undefined) {
+    async advise(message, image = null, signal = undefined, onUsage = () => {}) {
       const requestAnswer = async retry => {
+        let usage;
+        try {
         let response;
         try {
           response = await fetch("https://blackroute.ironborn.cc/v1/chat/completions", {
@@ -62,7 +64,10 @@ export function createBlackrouteProvider(apiKey, model = "deepseek-v3.2-maas") {
           try { const error = await response.json(); code = String(error?.error?.code || error?.error?.type || "").slice(0, 60); } catch {}
           throw new Error(`Blackroute request failed (${response.status}${code ? `:${code}` : ""})`);
         }
-        return parseResult(await response.text(), image);
+        const raw = await response.text();
+        try { usage = JSON.parse(raw)?.usage; } catch {}
+        return parseResult(raw, image);
+        } finally { onUsage(model, usage); }
       };
       try { return await requestAnswer(false); }
       catch (firstError) {

@@ -12,6 +12,7 @@ let quota = null;
 let quotaError = "";
 let quotaGeneration = 0;
 let quotaLoad = null;
+let costs = null;
 
 function authHeaders(token) {
   return { "Content-Type": "application/json", [new URL(AI_ENDPOINT).hostname === "functions.yandexcloud.net" ? "X-X20-Authorization" : "Authorization"]: `Bearer ${token}` };
@@ -32,7 +33,7 @@ function acceptQuota(value, generation) {
 }
 
 export function quotaState() {
-  return { quota: quota && Date.parse(quota.resetsAt) > Date.now() ? quota : null, error: quotaError, loading: Boolean(quotaLoad) };
+  return { quota: quota && Date.parse(quota.resetsAt) > Date.now() ? quota : null, costs, error: quotaError, loading: Boolean(quotaLoad) };
 }
 
 export async function refreshQuota() {
@@ -51,8 +52,9 @@ export async function refreshQuota() {
       });
       const data = await response.json();
       if (!response.ok || !acceptQuota(data.quota, generation)) throw new Error();
+      costs = data.costs || null;
     } catch {
-      if (generation === quotaGeneration) quotaError = "Не удалось обновить остаток. Повторите попытку.";
+      if (generation === quotaGeneration) { costs = null; quotaError = "Не удалось обновить остаток. Повторите попытку."; }
     } finally {
       if (generation === quotaGeneration) { quotaLoad = null; notify(); }
     }
@@ -150,6 +152,7 @@ export async function requestAiAdvice(options) {
     timeline?.finish();
     activeRequests--;
     notify();
+    if (generation === quotaGeneration) void refreshQuota();
   }
 }
 
@@ -184,6 +187,7 @@ window.addEventListener("offline", notify);
 window.addEventListener("nutrition-auth-changed", () => {
   quotaGeneration++;
   quota = null;
+  costs = null;
   quotaError = "";
   quotaLoad = null;
   serviceError = "";
