@@ -39,9 +39,9 @@ function localStorage() {
     get length() { return data.size; },
   };
 }
-async function promptly(promise) {
+async function promptly(promise, timeout = 2000) {
   let timer;
-  try { return await Promise.race([promise, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Offline operation waited for the server')), 2000); })]); }
+  try { return await Promise.race([promise, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Offline operation waited for the server')), timeout); })]); }
   finally { clearTimeout(timer); }
 }
 async function eventually(check) {
@@ -60,6 +60,17 @@ test('Real SDK: offline save survives client restart, synchronizes and supports 
   const pendingKey = 'my-nutritionist:account:queue-owner:pending-writes:v1:';
   const entry = { id: 'offline-restart', date: '2026-10-06', mealType: 'Перекус', title: 'SDK queue test', portion: 1, portionUnit: 'г', unitWeight: null, calories: 0, protein: 0, fat: 0, carbs: 0, source: 'manual' };
   try {
+    await sdk.disableNetwork(db);
+    const misleadingOnline = startClient(db, storage, true);
+    const inFlight = misleadingOnline.window.nutritionStore.saveDiaryEntry({ ...entry, id: 'online-but-disconnected' });
+    await eventually(() => JSON.parse(storage.getItem(pendingKey) || '[]').length === 1);
+    assert.equal((await promptly(inFlight, 7000)).mode, 'queued');
+    const reloaded = startClient(db, storage, false);
+    assert.equal((await promptly(reloaded.window.nutritionStore.loadDiaryEntries(entry.date))).some(item => item.id === 'online-but-disconnected'), true);
+    await sdk.enableNetwork(db);
+    await eventually(() => storage.getItem(pendingKey) === null);
+    assert.equal((await sdk.getDocFromServer(sdk.doc(db, 'users/queue-owner/foodDiary', 'online-but-disconnected'))).data().title, entry.title);
+    await sdk.deleteDoc(sdk.doc(db, 'users/queue-owner/foodDiary', 'online-but-disconnected'));
     await sdk.disableNetwork(db);
     const first = startClient(db, storage, false);
     assert.equal((await promptly(first.window.nutritionStore.saveDiaryEntry(entry))).mode, 'queued');
