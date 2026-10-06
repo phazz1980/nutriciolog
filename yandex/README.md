@@ -59,6 +59,12 @@ JSON body 1 800 000 байт. Сжатие может ухудшить чтен�
 - https://yandex.cloud/en/docs/functions/lang/nodejs/handler
 
 Опубликованная интеграция проверяется командой `node tests/yandex-live.mjs`.
+
+## Ручная публикация
+
+Архив функции собирается из корня командой `python yandex/build.py`. В Cloud Functions выберите функцию `nutrition`, источник «ZIP-архив», прикрепите `yandex/function.zip` и сохраните новую версию. Не меняйте точку входа `index.handler`, сервисный аккаунт `x20-ai`, Lockbox и переменные YDB/Blackroute.
+
+Клиент публикуется после проверки функции: из корня выполните `git add -A`, `git commit`, `git fetch origin main`, `git rebase origin/main`, `git push origin HEAD:main`. Workflow `Deploy to Yandex Object Storage` загрузит сайт. Проверяйте версию в `js/core.js`, а после deploy откройте сайт в новой вкладке или обновите Service Worker.
 Проверяются endpoint опубликованного клиента, health, CORS и отказ без токена
 или с невалидным токеном. Ключи и аккаунт не нужны; платных вызовов модели нет.
 
