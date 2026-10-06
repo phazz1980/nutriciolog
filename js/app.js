@@ -38,6 +38,7 @@ let lastNutritionClarification = null;
 let recognizedManualMealEstimate = null;
 let savedMealEstimate = null;
 let describedPortion = null;
+let mealCalculationBusy = false;
 let savedMealProducts = [];
 let savedMealProductsUid = "";
 let savedMealProductsLoading = null;
@@ -943,6 +944,7 @@ function fillRecognizedMealNutrition() {
 }
 
 function fillMealNutritionFromPortion() {
+  setAutomaticPortionUnit();
   if (savedMealEstimate) fillSavedMealNutrition();
   else fillRecognizedMealNutrition();
 }
@@ -993,7 +995,11 @@ function applyDescriptionPortion() {
 }
 
 async function calculateMealNutrition(clarification = "") {
+  if (mealCalculationBusy) return;
+  mealCalculationBusy = true;
+  try {
   applyDescriptionPortion();
+  setAutomaticPortionUnit();
   if (!validateMealEstimate()) return;
   await loadMealSuggestions();
   if (!savedMealEstimate && matchingProducts(savedMealProducts, element("mealName").value).length) {
@@ -1094,6 +1100,7 @@ async function calculateMealNutrition(clarification = "") {
     Object.assign(result, readFormNutrition());
   }
   showCalculationResult(result);
+  } finally { mealCalculationBusy = false; }
 }
 
 /* ------------------------------------------------------------- AI: photo */
@@ -1610,6 +1617,13 @@ function initMealForm() {
     }
   });
   element("portion").addEventListener("input", fillMealNutritionFromPortion);
+  element("portion").addEventListener("change", () => {
+    const base = savedMealEstimate;
+    if (Number(element("portion").value) > 0 && portionUnit() === "шт." && base?.portionUnit === "г"
+        && !base.unitWeight && !(lastCalculatedUnitWeight?.title === base.title && lastCalculatedUnitWeight.weight > 0)) {
+      void calculateMealNutrition();
+    }
+  });
   element("mealType").addEventListener("change", () => { lastSelectedMealType = element("mealType").value; });
   element("mealDate").addEventListener("change", () => setPortionUnit(portionUnit()));
 
