@@ -1,0 +1,39 @@
+name: Test Firestore rules
+on:
+  push:
+    paths:
+      - firestore.rules
+      - firebase.test.json
+      - tests/firestore-rules.test.cjs
+      - tests/firestore-queue.test.cjs
+      - firebase-client.js
+      - package.json
+      - package-lock.json
+      - .github/workflows/test-firestore.yml
+  pull_request:
+    paths:
+      - firestore.rules
+      - firebase.test.json
+      - tests/firestore-rules.test.cjs
+      - tests/firestore-queue.test.cjs
+      - firebase-client.js
+      - package.json
+      - package-lock.json
+      - .github/workflows/test-firestore.yml
+permissions:
+  contents: read
+jobs:
+  rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run test:rules

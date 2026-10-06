@@ -83,7 +83,7 @@ export const serverTimestamp=()=>0;
       });
       // Accelerate only application auth timers; the Firebase response remains manually controlled.
       await page.route('**/firebase-client.js', route => route.fulfill({ contentType: 'text/javascript', body: source.replace('const AUTH_WAIT_MS = 15000;', 'const AUTH_WAIT_MS = 200;') }));
-      await page.goto(origin);
+      await page.goto(origin, { timeout: 30000 });
       await page.waitForFunction(() => Boolean(window.nutritionStore));
       return { page, errors, context, recover: () => { failImports = false; } };
     }
@@ -239,6 +239,23 @@ export const serverTimestamp=()=>0;
       await page.evaluate(() => { window.test.failSave = false; window.dispatchEvent(new Event('online')); });
       await page.waitForFunction(() => window.test.writes.some(write => write[0][3] === 'foodDiary' && write[0][4] === 'offline-entry'));
       await page.waitForFunction(() => localStorage.getItem('my-nutritionist:account:A:pending-writes:v1:') === null);
+    });
+
+    await check('Rejected queued writes remain visible and survive until a successful retry', {}, async ({ page }) => {
+      await page.waitForFunction(() => window.getFirebaseAuthStatus().state === 'ready');
+      await page.evaluate(async () => {
+        window.test.setUser({uid:'A',email:'a@example.invalid'});
+        window.test.failSave = true;
+        await window.nutritionStore.saveDiaryEntry({id:'rejected-entry',date:'2026-10-06',title:'Retained',calories:100});
+        window.test.failSaveCode = 'permission-denied';
+        window.dispatchEvent(new Event('online'));
+      });
+      await page.waitForFunction(() => JSON.parse(localStorage.getItem('my-nutritionist:account:A:pending-writes:v1:') || '[]')[0]?.blocked);
+      assert.match(await page.locator('#firebaseStatus').textContent(), /Не приняты сервером: 1/);
+      assert.equal(await page.evaluate(async () => (await window.nutritionStore.loadDiaryEntries('2026-10-06'))[0].title), 'Retained');
+      await page.evaluate(() => { window.test.failSave = false; window.dispatchEvent(new Event('online')); });
+      await page.waitForFunction(() => localStorage.getItem('my-nutritionist:account:A:pending-writes:v1:') === null);
+      assert.equal(await page.evaluate(() => window.test.writes.filter(write => write[0][4] === 'rejected-entry').length), 1);
     });
 
     await check('Corrupt or unavailable local storage does not prevent a cloud profile read', { holdProfile: true }, async ({ page }) => {

@@ -25,7 +25,7 @@ service cloud.firestore {
         && data.title is string && data.title.size() > 0 && data.title.size() <= 200
         && (!('portion' in data) || data.portion == null || validNumber(data.portion, 0, 10000))
         && (!('portionUnit' in data) || data.portionUnit in ['г', 'мл', 'шт.'])
-        && (!('unitWeight' in data) || validNumber(data.unitWeight, 1, 5000))
+        && (!('unitWeight' in data) || data.unitWeight == null || validNumber(data.unitWeight, 1, 5000))
         && validNumber(data.calories, 0, 50000) && validNumber(data.protein, 0, 5000)
         && validNumber(data.fat, 0, 5000) && validNumber(data.carbs, 0, 5000)
         && data.source is string && data.source.size() <= 80 && data.updatedAt is timestamp;
@@ -36,7 +36,7 @@ service cloud.firestore {
         && data.title is string && data.title.size() > 0 && data.title.size() <= 200
         && data.normalizedName is string && data.normalizedName.size() > 0 && data.normalizedName.size() <= 120
         && (!('portion' in data) || data.portion == null || validNumber(data.portion, 0, 10000))
-        && (!('unitWeight' in data) || validNumber(data.unitWeight, 1, 5000))
+        && (!('unitWeight' in data) || data.unitWeight == null || validNumber(data.unitWeight, 1, 5000))
         && validNumber(data.calories, 0, 50000) && validNumber(data.protein, 0, 5000)
         && validNumber(data.fat, 0, 5000) && validNumber(data.carbs, 0, 5000)
         && (!('aiClarification' in data) || (data.aiClarification is map && hasOnly(data.aiClarification, ['question', 'additionalIngredients']) && data.aiClarification.question is string && data.aiClarification.question.size() <= 500 && data.aiClarification.additionalIngredients is string && data.aiClarification.additionalIngredients.size() <= 500))
@@ -45,7 +45,30 @@ service cloud.firestore {
 
     function validWaterLog(data) { return hasOnly(data, ['date', 'glasses', 'updatedAt']) && validDate(data.date) && validNumber(data.glasses, 0, 8) && data.updatedAt is timestamp; }
     function validWeightEntry(data) { return hasOnly(data, ['date', 'weight', 'updatedAt']) && validDate(data.date) && validNumber(data.weight, 20, 500) && data.updatedAt is timestamp; }
-    function validDayPlan(data) { return hasOnly(data, ['date', 'meals', 'updatedAt']) && validDate(data.date) && data.meals is list && data.meals.size() <= 20 && data.updatedAt is timestamp; }
+    function validPlanItem(item) {
+      let calories = item.calories;
+      return item.keys().hasOnly(['name', 'calories'])
+        && item.name.matches('^.{1,200}$')
+        && calories >= 0 && calories <= 50000;
+    }
+    function validPlanItems(items) {
+      let count = items.size();
+      return items is list && count <= 20 && (count == 0 || (
+        (count <= 0 || validPlanItem(items[0])) && (count <= 1 || validPlanItem(items[1])) && (count <= 2 || validPlanItem(items[2])) && (count <= 3 || validPlanItem(items[3])) && (count <= 4 || validPlanItem(items[4]))
+        && (count <= 5 || ((count <= 5 || validPlanItem(items[5])) && (count <= 6 || validPlanItem(items[6])) && (count <= 7 || validPlanItem(items[7])) && (count <= 8 || validPlanItem(items[8])) && (count <= 9 || validPlanItem(items[9]))))
+        && (count <= 10 || ((count <= 10 || validPlanItem(items[10])) && (count <= 11 || validPlanItem(items[11])) && (count <= 12 || validPlanItem(items[12])) && (count <= 13 || validPlanItem(items[13])) && (count <= 14 || validPlanItem(items[14]))))
+        && (count <= 15 || ((count <= 15 || validPlanItem(items[15])) && (count <= 16 || validPlanItem(items[16])) && (count <= 17 || validPlanItem(items[17])) && (count <= 18 || validPlanItem(items[18])) && (count <= 19 || validPlanItem(items[19]))))));
+    }
+    function validDayPlan(data) {
+      let meals = data.meals;
+      return hasOnly(data, ['date', 'meals', 'updatedAt']) && validDate(data.date)
+        && meals is map && meals.keys().hasAll(['Завтрак', 'Обед', 'Ужин', 'Перекус'])
+        && meals.keys().hasOnly(['Завтрак', 'Обед', 'Ужин', 'Перекус'])
+        && meals['Завтрак'] is list && meals['Обед'] is list
+        && meals['Ужин'] is list && meals['Перекус'] is list
+        && validPlanItems(meals['Завтрак'].concat(meals['Обед']).concat(meals['Ужин']).concat(meals['Перекус']))
+        && data.updatedAt is timestamp;
+    }
 
     match /users/{userId}/profile/main {
       allow read: if signedInOwner(userId);
