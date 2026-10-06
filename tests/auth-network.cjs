@@ -490,6 +490,21 @@ export const serverTimestamp=()=>0;
       await page.screenshot({path:require('node:os').tmpdir()+'/nutrition-advice.png',fullPage:true});
     });
 
+    await check('Estimated AI costs show USD, partial totals and clear on logout', {}, async ({page}) => {
+      await page.route('https://functions.yandexcloud.net/**', async route => {
+        const period=new Date().toISOString().slice(0,7);
+        const resetsAt=new Date(Date.UTC(new Date().getUTCFullYear(),new Date().getUTCMonth()+1,1)).toISOString();
+        await route.fulfill({json:{quota:{unit:'requests',used:2,limit:1000,remaining:998,period,resetsAt},costs:{status:'ok',currency:'USD',totals:{day:{nanoUsd:422020,requests:1,unknown:0},week:{nanoUsd:21190770,requests:2,unknown:1},month:{nanoUsd:21190770,requests:2,unknown:1}}}}});
+      });
+      await page.evaluate(()=>window.test.setUser({uid:'cost-user',getIdToken:async()=> 'test-token'}));
+      await page.locator('[data-nav="profile"]').first().click();
+      await page.waitForFunction(()=>document.getElementById('aiCosts').textContent.includes('$0.000422'));
+      assert.match(await page.locator('#aiCosts').innerText(),/Сумма неполная/);
+      await page.screenshot({path:require('node:os').tmpdir()+'/nutrition-costs.png',fullPage:true});
+      await page.evaluate(()=>window.test.setUser(null));
+      assert.equal(await page.locator('#aiCosts').textContent(),'');
+    });
+
     const listeners = {}, stored = [];
     const cached = { ok: true, name: 'cached' };
     let fetchResult = () => new Promise(() => {});

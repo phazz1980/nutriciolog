@@ -88,7 +88,14 @@ test('Authenticated gateway enforces quotas before provider calls; ignores claim
     const unsigned = `${encode({ alg: 'RS256', kid: jwk.kid })}.${encode({ sub: uid, aud: 'my-nutritionist-67ce8', iss: 'https://securetoken.google.com/my-nutritionist-67ce8', exp: now + 3600, iat: now, auth_time: now })}`;
     return `${unsigned}.${sign('RSA-SHA256', Buffer.from(unsigned), privateKey).toString('base64url')}`;
   }
-  const env = { AI_PROVIDER: 'blackroute', BLACKROUTE_API_KEY: 'test-only', AI_QUOTA_STORE: memoryStore(), AI_MONTHLY_REQUEST_LIMIT: '2' };
+  const costRecords = [];
+  let failCostStart = false;
+  const env = { AI_PROVIDER: 'blackroute', BLACKROUTE_API_KEY: 'test-only', AI_QUOTA_STORE: {
+    ...memoryStore(),
+    async startCost(uid, id) { if (failCostStart) throw new Error('private'); costRecords.push({ uid, id, nanoUsd: 0, unknown: 1 }); },
+    async finishCost(uid, id, nanoUsd, unknown) { Object.assign(costRecords.find(row => row.uid === uid && row.id === id), { nanoUsd, unknown }); },
+    async readCosts(uid) { return costRecords.filter(row => row.uid === uid).map(row => ({ ...row, day: row.id.slice(5, 15) })); },
+  }, AI_MONTHLY_REQUEST_LIMIT: '2' };
   const post = (uid, body, config = env) => worker.fetch(new Request('https://gateway/api/advice', {
     method: 'POST', headers: { Authorization: `Bearer ${token(uid)}`, 'Content-Type': 'application/json', Origin: 'https://nutriciolog-x20.website.yandexcloud.net' }, body: JSON.stringify(body),
   }), config);
@@ -113,4 +120,13 @@ test('Authenticated gateway enforces quotas before provider calls; ignores claim
   assert.equal((await (await post('b', { action: 'usage' })).json()).quota.used, 1);
   const unauthenticated = await worker.fetch(new Request('https://gateway/api/advice', { method: 'POST', body: '{"action":"usage"}' }), env);
   assert.equal(unauthenticated.status, 401);
+  assert.equal(costRecords.length, 3);
+  assert.ok(costRecords.every(row => row.unknown === 1));
+  const costs = (await (await post('b', { action: 'usage', uid: 'a' })).json()).costs;
+  assert.equal(costs.totals.day.requests, 1, 'Only verified UID costs are returned');
+  assert.equal(costs.totals.day.unknown, 1, 'Missing usage on provider failure remains unknown');
+  failCostStart = true;
+  const before = modelCalls;
+  assert.equal((await post('c', { message: 'Еда' })).status, 503);
+  assert.equal(modelCalls, before, 'No model call if cost reservation cannot be persisted');
 });

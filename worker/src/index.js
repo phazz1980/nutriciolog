@@ -1,8 +1,9 @@
 import { getProvider } from "./providers/index.js";
 import { AiResponseFormatError } from "./providers/blackroute.js";
 import { userQuota, QuotaExceededError, QuotaUnavailableError } from "./quota.js";
+import { estimateUsage, readCosts } from './costs.js';
 
-const WORKER_VERSION = "0.1.19";
+const WORKER_VERSION = "0.1.20";
 
 const ALLOWED_ORIGINS = new Set([
   "https://nutriciolog.pages.dev",
@@ -50,7 +51,7 @@ export default {
         return json({ error: "Тело запроса должно быть корректным JSON." }, 400, request);
       }
       if (!payload || typeof payload !== "object" || Array.isArray(payload)) return json({ error: "Тело запроса должно быть объектом." }, 400, request);
-      if (payload.action === "usage") return json({ quota: await userQuota(env, claims.sub) }, 200, request);
+      if (payload.action === "usage") return json({ quota: await userQuota(env, claims.sub), costs: await readCosts(env, claims.sub) }, 200, request);
       if (payload.action !== undefined) return json({ error: "Неизвестное действие." }, 400, request);
       const { message, image = null, model = null } = payload;
       if (typeof message !== "string" || !message.trim() || message.length > MAX_MESSAGE_LENGTH) {
@@ -66,7 +67,27 @@ export default {
         return json({ advice: "Этот ИИ пока не умеет анализировать фото. Опишите, пожалуйста, блюдо и примерную порцию текстом.", proposedMeal: null, proposedProducts: [] }, 200, request);
       }
       quota = await userQuota(env, claims.sub, true);
-      const result = await provider.advise(message.trim(), image, AbortSignal.timeout(45_000));
+      const costStore = env.AI_QUOTA_STORE;
+      const costId = `cost:${new Date().toISOString().slice(0, 10)}:${crypto.randomUUID()}`;
+      const tracking = Boolean(costStore?.startCost && costStore?.finishCost);
+      if (tracking) {
+        try { await costStore.startCost(claims.sub, costId); }
+        catch { return json({ error: 'Учёт расходов временно недоступен. Попробуйте позже.', quota }, 503, request); }
+      }
+      let nanoUsd = 0, unknown = 0, attempts = 0, result;
+      try {
+        result = await provider.advise(message.trim(), image, AbortSignal.timeout(40_000), (model, usage) => {
+          attempts++;
+          const estimate = estimateUsage(model, usage);
+          if (estimate === null) unknown++;
+          else nanoUsd += estimate;
+        });
+      } finally {
+        if (tracking) {
+          try { await costStore.finishCost(claims.sub, costId, nanoUsd, unknown + (attempts ? 0 : 1)); }
+          catch { /* Pending record remains visibly incomplete; never retry the model. */ }
+        }
+      }
       return json({ ...result, quota }, 200, request);
     } catch (error) {
       const response = errorResponse(error, request);
