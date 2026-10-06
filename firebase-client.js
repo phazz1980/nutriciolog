@@ -509,6 +509,16 @@ async function save(collection, id, value) {
   const generation = isProfile ? ++profileGeneration : profileGeneration;
   if (isProfile) profileSaving = true;
   try {
+    if (navigator.onLine === false) {
+      if (!queueWrite("set", collection, id, value, uid)) throw new Error("Не удалось сохранить изменения на устройстве. Освободите место и повторите.");
+      if (isProfile && user?.uid === uid && generation === profileGeneration) {
+        cacheProfile(uid, value);
+        publishProfile(uid, profileFields(value));
+      }
+      reportDebug({ type: "save", mode: "queued", collection });
+      updateStatus();
+      return { mode: "queued" };
+    }
     const { doc, setDoc, serverTimestamp } = window.__firestore;
     await setDoc(doc(db, "users", uid, collection, id), { ...value, updatedAt: serverTimestamp() }, { merge: true });
     if (isProfile && user?.uid === uid && generation === profileGeneration) {
@@ -610,6 +620,11 @@ async function deleteProduct(name) {
   }
   const uid = user.uid;
   try {
+    if (navigator.onLine === false) {
+      if (!queueWrite("delete", "products", normalizedName, null, uid)) throw new Error("Не удалось сохранить удаление на устройстве. Повторите после восстановления сети.");
+      updateStatus();
+      return { mode: "queued" };
+    }
     const { deleteDoc, doc } = window.__firestore;
     await deleteDoc(doc(db, "users", uid, "products", normalizedName));
     reportDebug({ type: "delete", mode: "cloud", collection: "products" });
@@ -709,6 +724,11 @@ window.nutritionStore = {
     }
     const uid = user.uid;
     try {
+      if (navigator.onLine === false) {
+        if (!queueWrite("delete", "foodDiary", String(id), null, uid)) throw new Error("Не удалось сохранить удаление на устройстве. Повторите после восстановления сети.");
+        updateStatus();
+        return { mode: "queued" };
+      }
       const { deleteDoc, doc } = window.__firestore;
       await deleteDoc(doc(db, "users", uid, "foodDiary", id));
       return { mode: "cloud" };
