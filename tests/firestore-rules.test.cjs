@@ -57,6 +57,11 @@ test('Plan validates nested items and accepts the 20-item boundary', async () =>
   const make = meals => ({ date: '2026-10-06', meals, updatedAt: serverTimestamp() });
   const base = { Завтрак: [], Обед: [], Ужин: [], Перекус: [] };
   await assertSucceeds(setDoc(ref, make({ ...base, Завтрак: Array.from({length:20}, () => ({name:'Test', calories:100})) })));
+  const spread = Object.fromEntries(Object.keys(base).map(type => [type, Array.from({length:5}, () => ({name:'Test', calories:100}))]));
+  await assertSucceeds(setDoc(ref, make(spread)));
+  const invalidLast = Array.from({length:20}, () => ({name:'Test', calories:100}));
+  invalidLast[19].calories = -1;
+  await assertFails(setDoc(ref, make({ ...base, Завтрак: invalidLast })));
   for (const item of [{name:'Bad',calories:-1}, {name:'',calories:100}, {name:'Bad',calories:'100'}, {name:'Bad',calories:100,extra:true}]) {
     await assertFails(setDoc(ref, make({ ...base, Перекус: [item] })));
   }
