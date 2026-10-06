@@ -56,13 +56,13 @@ test('Plan validates nested items and accepts the 20-item boundary', async () =>
   const ref = doc(db, 'users/owner/dayPlans/2026-10-06');
   const make = meals => ({ date: '2026-10-06', meals, updatedAt: serverTimestamp() });
   const base = { Завтрак: [], Обед: [], Ужин: [], Перекус: [] };
-  await assertSucceeds(setDoc(ref, make({ ...base, Завтрак: Array.from({length:20}, () => ({name:'Test', calories:100})) })));
-  const spread = Object.fromEntries(Object.keys(base).map(type => [type, Array.from({length:5}, () => ({name:'Test', calories:100}))]));
+  await assertSucceeds(setDoc(ref, make({ ...base, Завтрак: Array.from({length:20}, (_, index) => ({name:`Test ${index}`, calories:100 + index})) })));
+  const spread = Object.fromEntries(Object.keys(base).map(type => [type, Array.from({length:5}, (_, index) => ({name:`${type} ${index}`, calories:100 + index}))]));
   await assertSucceeds(setDoc(ref, make(spread)));
-  const invalidLast = Array.from({length:20}, () => ({name:'Test', calories:100}));
+  const invalidLast = Array.from({length:20}, (_, index) => ({name:`Test ${index}`, calories:100 + index}));
   invalidLast[19].calories = -1;
   await assertFails(setDoc(ref, make({ ...base, Завтрак: invalidLast })));
-  for (const item of [{name:'Bad',calories:-1}, {name:'',calories:100}, {name:'Bad',calories:'100'}, {name:'Bad',calories:100,extra:true}]) {
+  for (const item of [{name:'Bad',calories:-1}, {name:'',calories:100}, {name:'Bad',calories:'100'}, {name:'Bad',calories:null}, {name:'Bad',calories:true}, {name:'Bad',calories:{}}, {name:'Bad',calories:100,extra:true}]) {
     await assertFails(setDoc(ref, make({ ...base, Перекус: [item] })));
   }
   await assertFails(setDoc(ref, make([])));
