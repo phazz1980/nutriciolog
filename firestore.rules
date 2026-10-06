@@ -49,7 +49,7 @@ service cloud.firestore {
       let calories = item.calories;
       return item.keys().hasOnly(['name', 'calories'])
         && item.name.matches('^.{1,200}$')
-        && calories is number && calories >= 0 && calories <= 50000;
+        && calories >= 0 && calories <= 50000;
     }
     function validPlanItems(items) {
       let count = items.size();
@@ -60,12 +60,13 @@ service cloud.firestore {
         && (count <= 15 || ((count <= 15 || validPlanItem(items[15])) && (count <= 16 || validPlanItem(items[16])) && (count <= 17 || validPlanItem(items[17])) && (count <= 18 || validPlanItem(items[18])) && (count <= 19 || validPlanItem(items[19]))))));
     }
     function validDayPlan(data) {
+      let meals = data.meals;
       return hasOnly(data, ['date', 'meals', 'updatedAt']) && validDate(data.date)
-        && data.meals is map && data.meals.keys().hasAll(['Завтрак', 'Обед', 'Ужин', 'Перекус'])
-        && hasOnly(data.meals, ['Завтрак', 'Обед', 'Ужин', 'Перекус'])
-        && validPlanItems(data.meals['Завтрак']) && validPlanItems(data.meals['Обед'])
-        && validPlanItems(data.meals['Ужин']) && validPlanItems(data.meals['Перекус'])
-        && data.meals['Завтрак'].size() + data.meals['Обед'].size() + data.meals['Ужин'].size() + data.meals['Перекус'].size() <= 20
+        && meals is map && meals.keys().hasAll(['Завтрак', 'Обед', 'Ужин', 'Перекус'])
+        && meals.keys().hasOnly(['Завтрак', 'Обед', 'Ужин', 'Перекус'])
+        && meals['Завтрак'] is list && meals['Обед'] is list
+        && meals['Ужин'] is list && meals['Перекус'] is list
+        && validPlanItems(meals['Завтрак'].concat(meals['Обед']).concat(meals['Ужин']).concat(meals['Перекус']))
         && data.updatedAt is timestamp;
     }
 
