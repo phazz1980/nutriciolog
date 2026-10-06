@@ -100,6 +100,8 @@ async function flushPendingWrites() {
   if (!writes.length) return;
   pendingFlush = (async () => {
     for (const pending of writes) {
+      if (user?.uid !== uid) break;
+      if (!pendingWrites(uid).some(item => item.opId === pending.opId)) continue;
       // Stop on a temporary failure and preserve this and later operations.
       try {
         const { doc, setDoc, deleteDoc, serverTimestamp } = window.__firestore;
@@ -113,9 +115,11 @@ async function flushPendingWrites() {
       } catch (error) {
         reportDebug({ type: "sync", mode: "deferred", collection: pending.collection, reason: String(error?.code || error?.message || "Unknown").slice(0, 180) });
         if (isTemporaryFirestoreError(error)) break;
-        // A permanent error must not block unrelated queued documents forever.
-        const remaining = pendingWrites(uid).filter(item => item.opId !== pending.opId);
-        storePendingWrites(uid, remaining);
+        // Preserve rejected payloads for correction; continue with other documents.
+        // A rejected write is not a successful sync and must never be discarded.
+        const current = pendingWrites(uid).map(item => item.opId === pending.opId
+          ? { ...item, blocked: true } : item);
+        storePendingWrites(uid, current);
       }
     }
   })().finally(() => { pendingFlush = null; updateStatus(); });
@@ -399,7 +403,9 @@ function updateStatus() {
     if (screen) screen.prepend(element);
   }
   const pending = user ? pendingWrites(user.uid).length : 0;
+  const blocked = user ? pendingWrites(user.uid).filter(item => item.blocked).length : 0;
   if (element) element.textContent = !configured ? "Локальный режим: Firebase пока не подключён" : user ? (pending ? `Синхронизация: ожидают отправки ${pending} изм.` : `Синхронизация: ${user.email || "аккаунт подключён"}`) : guestMode ? "Гостевой режим: данные сохраняются на этом устройстве" : authState === "loading" ? "Подключаемся и восстанавливаем вход…" : authState === "error" ? "Сервис входа недоступен" : "Войдите, чтобы синхронизировать данные";
+  if (element && blocked) element.textContent += ` Не приняты сервером: ${blocked}. Изменения сохранены на устройстве; проверьте данные и права доступа.`;
   updateAuthUI();
   window.dispatchEvent(new Event("nutrition-auth-status"));
 }
