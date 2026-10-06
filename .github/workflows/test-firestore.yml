@@ -5,6 +5,8 @@ on:
       - firestore.rules
       - firebase.test.json
       - tests/firestore-rules.test.cjs
+      - tests/firestore-queue.test.cjs
+      - firebase-client.js
       - package.json
       - package-lock.json
       - .github/workflows/test-firestore.yml
@@ -13,6 +15,8 @@ on:
       - firestore.rules
       - firebase.test.json
       - tests/firestore-rules.test.cjs
+      - tests/firestore-queue.test.cjs
+      - firebase-client.js
       - package.json
       - package-lock.json
       - .github/workflows/test-firestore.yml
