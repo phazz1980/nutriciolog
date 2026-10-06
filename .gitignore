@@ -39,3 +39,4 @@ dist/
 build/
 
 yandex/function.zip
+.test-tools/

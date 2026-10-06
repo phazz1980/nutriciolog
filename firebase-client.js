@@ -93,6 +93,37 @@ function isTemporaryFirestoreError(error) {
   return navigator.onLine === false || ["unavailable", "deadline-exceeded", "aborted", "cancelled", "internal", "unknown", "network-request-failed"].some(part => code.includes(part));
 }
 
+// Persist before calling the SDK: its promise can remain pending while the
+// browser still reports an online connection. A late acknowledgement removes
+// only its own operation, never a newer edit of the same document.
+async function sendDurableWrite(action, collection, id, value, uid) {
+  if (!queueWrite(action, collection, id, value, uid)) {
+    throw new Error("Не удалось сохранить изменения на устройстве. Освободите место и повторите.");
+  }
+  const operation = pendingWriteFor(collection, id, uid);
+  if (navigator.onLine === false) return "queued";
+  const { doc, setDoc, deleteDoc, serverTimestamp } = window.__firestore;
+  const reference = doc(db, "users", uid, collection, id);
+  let timer;
+  const acknowledgement = Promise.resolve().then(() => action === "delete"
+    ? deleteDoc(reference)
+    : setDoc(reference, { ...value, updatedAt: serverTimestamp() }, { merge: true }))
+    .then(() => {
+      storePendingWrites(uid, pendingWrites(uid).filter(item => item.opId !== operation.opId));
+      updateStatus();
+      return "cloud";
+    }, error => {
+      if (!isTemporaryFirestoreError(error)) {
+        storePendingWrites(uid, pendingWrites(uid).map(item => item.opId === operation.opId ? { ...item, blocked: true } : item));
+        updateStatus();
+      }
+      throw error;
+    });
+  try {
+    return await Promise.race([acknowledgement, new Promise(resolve => { timer = setTimeout(() => resolve("queued"), 5000); })]);
+  } finally { clearTimeout(timer); }
+}
+
 async function flushPendingWrites() {
   if (pendingFlush || !configured || !user || !db || navigator.onLine === false) return pendingFlush;
   const uid = user.uid;
@@ -100,6 +131,8 @@ async function flushPendingWrites() {
   if (!writes.length) return;
   pendingFlush = (async () => {
     for (const pending of writes) {
+      if (user?.uid !== uid) break;
+      if (!pendingWrites(uid).some(item => item.opId === pending.opId)) continue;
       // Stop on a temporary failure and preserve this and later operations.
       try {
         const { doc, setDoc, deleteDoc, serverTimestamp } = window.__firestore;
@@ -113,9 +146,11 @@ async function flushPendingWrites() {
       } catch (error) {
         reportDebug({ type: "sync", mode: "deferred", collection: pending.collection, reason: String(error?.code || error?.message || "Unknown").slice(0, 180) });
         if (isTemporaryFirestoreError(error)) break;
-        // A permanent error must not block unrelated queued documents forever.
-        const remaining = pendingWrites(uid).filter(item => item.opId !== pending.opId);
-        storePendingWrites(uid, remaining);
+        // Preserve rejected payloads for correction; continue with other documents.
+        // A rejected write is not a successful sync and must never be discarded.
+        const current = pendingWrites(uid).map(item => item.opId === pending.opId
+          ? { ...item, blocked: true } : item);
+        storePendingWrites(uid, current);
       }
     }
   })().finally(() => { pendingFlush = null; updateStatus(); });
@@ -399,7 +434,9 @@ function updateStatus() {
     if (screen) screen.prepend(element);
   }
   const pending = user ? pendingWrites(user.uid).length : 0;
+  const blocked = user ? pendingWrites(user.uid).filter(item => item.blocked).length : 0;
   if (element) element.textContent = !configured ? "Локальный режим: Firebase пока не подключён" : user ? (pending ? `Синхронизация: ожидают отправки ${pending} изм.` : `Синхронизация: ${user.email || "аккаунт подключён"}`) : guestMode ? "Гостевой режим: данные сохраняются на этом устройстве" : authState === "loading" ? "Подключаемся и восстанавливаем вход…" : authState === "error" ? "Сервис входа недоступен" : "Войдите, чтобы синхронизировать данные";
+  if (element && blocked) element.textContent += ` Не приняты сервером: ${blocked}. Изменения сохранены на устройстве; проверьте данные и права доступа.`;
   updateAuthUI();
   window.dispatchEvent(new Event("nutrition-auth-status"));
 }
@@ -503,14 +540,14 @@ async function save(collection, id, value) {
   const generation = isProfile ? ++profileGeneration : profileGeneration;
   if (isProfile) profileSaving = true;
   try {
-    const { doc, setDoc, serverTimestamp } = window.__firestore;
-    await setDoc(doc(db, "users", uid, collection, id), { ...value, updatedAt: serverTimestamp() }, { merge: true });
+    const mode = await sendDurableWrite("set", collection, id, value, uid);
     if (isProfile && user?.uid === uid && generation === profileGeneration) {
       cacheProfile(uid, value);
       publishProfile(uid, profileFields(value));
     }
-    reportDebug({ type: "save", mode: "cloud", collection });
-    return { mode: "cloud" };
+    reportDebug({ type: "save", mode, collection });
+    updateStatus();
+    return { mode };
   } catch (error) {
     if (isTemporaryFirestoreError(error) && queueWrite("set", collection, id, value, uid)) {
       if (isProfile && user?.uid === uid && generation === profileGeneration) {
@@ -604,10 +641,10 @@ async function deleteProduct(name) {
   }
   const uid = user.uid;
   try {
-    const { deleteDoc, doc } = window.__firestore;
-    await deleteDoc(doc(db, "users", uid, "products", normalizedName));
-    reportDebug({ type: "delete", mode: "cloud", collection: "products" });
-    return { mode: "cloud" };
+    const mode = await sendDurableWrite("delete", "products", normalizedName, null, uid);
+    reportDebug({ type: "delete", mode, collection: "products" });
+    updateStatus();
+    return { mode };
   } catch (error) {
     if (isTemporaryFirestoreError(error) && queueWrite("delete", "products", normalizedName, null, uid)) {
       reportDebug({ type: "delete", mode: "queued", collection: "products" });
@@ -703,9 +740,9 @@ window.nutritionStore = {
     }
     const uid = user.uid;
     try {
-      const { deleteDoc, doc } = window.__firestore;
-      await deleteDoc(doc(db, "users", uid, "foodDiary", id));
-      return { mode: "cloud" };
+      const mode = await sendDurableWrite("delete", "foodDiary", String(id), null, uid);
+      updateStatus();
+      return { mode };
     } catch (error) {
       if (isTemporaryFirestoreError(error) && queueWrite("delete", "foodDiary", String(id), null, uid)) {
         updateStatus();
