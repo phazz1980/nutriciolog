@@ -40,7 +40,7 @@ export const getDoc=async parts=>{
   }
   return {exists:()=>false};
 };
-export const getDocs=async()=>({docs:[]});
+export const getDocs=async parts=>({docs:(parts[3]==='products' ? window.test.products||[] : []).map((item,i)=>({id:String(i),data:()=>item}))});
 export const setDoc=async(...args)=>{if(window.test.failSave){const error=new Error('Offline');error.code=window.test.failSaveCode||'unavailable';throw error}window.test.writes.push(args)};
 export const deleteDoc=async()=>{};
 export const serverTimestamp=()=>0;
@@ -76,7 +76,10 @@ export const serverTimestamp=()=>0;
       let failImports = Boolean(options.failImports);
       await page.route('https://**/*', async route => {
         const url = new URL(route.request().url()).pathname;
-        if (!url.includes('/firebasejs/')) return route.abort();
+        if (!url.includes('/firebasejs/')) {
+          if(route.request().method()==='POST' && (route.request().postData()||'').includes('Дай один короткий совет')) return route.fulfill({json:{advice:'Тестовый совет'}});
+          return route.abort();
+        }
         if (failImports && (options.failApp || !url.endsWith('firebase-app.js'))) return route.abort();
         const body = url.endsWith('firebase-app.js') ? 'export const registry={}; export const initializeApp=()=>({registry});' : url.endsWith('firebase-auth.js') ? authSdk : firestoreSdk;
         return route.fulfill({ contentType: 'text/javascript', body, headers: { 'Access-Control-Allow-Origin': '*' } });
@@ -328,6 +331,7 @@ export const serverTimestamp=()=>0;
           if (holdUsage) { delayedRoute = route; return; }
           return fulfill(route, { quota: quota(used) });
         }
+        if((body.message||'').includes('Дай один короткий совет')) return fulfill(route,{advice:'Тестовый совет'});
         calls++;
         if (used >= 1000) return fulfill(route, { error: 'Лимит исчерпан', code: 'quota_exceeded', quota: quota(used) }, 429);
         used++;
@@ -365,6 +369,83 @@ export const serverTimestamp=()=>0;
     });
 
     // SW behavior without a real Google connection or a persistent browser cache.
+    await check('Portion from text offers personal products and scales without an AI request', {products:[{title:'Сыр российский',portion:100,calories:350,protein:25,fat:27,carbs:0}]}, async ({page}) => {
+      await page.evaluate(() => window.test.setUser({uid:'portion-user',getIdToken:async()=> 'test-token'}));
+      await page.locator('#todayAddMealButton').click();
+      await page.locator('#mealName').fill('50гр сыра');
+      await page.locator('#calculateMealButton').click();
+      await page.locator('.meal-suggestion', {hasText:'Сыр российский'}).click();
+      assert.equal(await page.locator('#portion').inputValue(), '50');
+      assert.equal(await page.locator('#portionUnit').inputValue(), 'г');
+      assert.equal(await page.locator('#calories').inputValue(), '175');
+      assert.equal(await page.locator('#portion').getAttribute('required'), null);
+      assert.equal(await page.evaluate(()=>window.test.writes.length), 0);
+    });
+    await check('Piece descriptions use AI weight and personal nutrition without saving automatically', {products:[{title:'Яйцо варёное',portion:100,calories:150,protein:13,fat:10,carbs:1}]}, async ({page}) => {
+      await page.route('https://functions.yandexcloud.net/**', async route => {
+        const body=route.request().postDataJSON();
+        await route.fulfill({json:body.message?.includes('Оцени пищевую') ? {advice:'Оценка',proposedProducts:[{title:'Яйцо варёное',portion:100,calories:999,protein:0,fat:0,carbs:0}]} : {advice:'Тестовый совет'}});
+      });
+      await page.evaluate(() => window.test.setUser({uid:'piece-user',getIdToken:async()=> 'test-token'}));
+      await page.locator('#todayAddMealButton').click();
+      await page.locator('#mealName').fill('2 яйца');
+      await page.locator('#calculateMealButton').click();
+      await page.locator('.meal-suggestion', {hasText:'Яйцо варёное'}).click();
+      assert.equal(await page.locator('#portion').inputValue(),'2');
+      assert.equal(await page.locator('#portionUnit').inputValue(),'шт.');
+      assert.equal(await page.locator('#calories').inputValue(),'');
+      await page.locator('#calculateMealButton').click();
+      await page.waitForFunction(()=>document.getElementById('calories').value==='150');
+      assert.equal(await page.evaluate(()=>window.test.writes.length),0);
+    });
+
+    await check('AI proposes a portion when separate weight is omitted', {}, async ({page}) => {
+      await page.route('https://functions.yandexcloud.net/**', async route => {
+        const body=route.request().postDataJSON();
+        await route.fulfill({json:body.message?.includes('Оцени пищевую') ? {advice:'Оценочная порция',proposedProducts:[{title:'Каша',portion:200,calories:180,protein:6,fat:4,carbs:30}]} : {advice:'Тестовый совет'}});
+      });
+      await page.evaluate(()=>window.test.setUser({uid:'estimate-user',getIdToken:async()=> 'test-token'}));
+      await page.locator('#todayAddMealButton').click();
+      await page.locator('#mealName').fill('Каша');
+      await page.locator('#calculateMealButton').click();
+      await page.waitForFunction(()=>document.getElementById('portion').value==='200');
+      assert.equal(await page.locator('#portionUnit').inputValue(),'г');
+      assert.equal(await page.locator('#calories').inputValue(),'180');
+      assert.equal(await page.evaluate(()=>window.test.writes.length),0);
+    });
+
+    await check('Daily advice sends current menu once per load, ignores proposed saves and clears on sign-out', {}, async ({page}) => {
+      let posts=0;
+      await page.route('https://functions.yandexcloud.net/**', async route => {
+        if(route.request().method()==='POST' && route.request().postDataJSON().action!=='usage') { posts++; assert.match(route.request().postData(), /Меню:/); }
+        await route.fulfill({json:{advice:'Добавьте овощи к следующему приёму пищи.',proposedMeal:{title:'Do not save',calories:10}}});
+      });
+      await page.evaluate(() => window.test.setUser({uid:'advice-user',getIdToken:async()=> 'test-token'}));
+      await page.waitForFunction(()=>document.getElementById('dailyAdviceText').textContent.includes('Добавьте овощи'));
+      assert.equal(posts,1);
+      assert.equal(await page.evaluate(()=>window.test.writes.length),0);
+      assert.equal(await page.evaluate(()=>document.getElementById('todayAddMealButton').nextElementSibling.id),'dailyAdvice');
+      await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+      await page.waitForTimeout(100);
+      assert.equal(posts,1);
+      await page.reload();
+      await page.waitForFunction(()=>Boolean(window.test.setUser));
+      await page.evaluate(() => window.test.setUser({uid:'advice-user',getIdToken:async()=> 'test-token'}));
+      await page.waitForFunction(()=>document.getElementById('dailyAdviceText').textContent.includes('Добавьте овощи'));
+      await page.waitForTimeout(200);
+      assert.equal(posts,1,'Unchanged menu is not sent after reload');
+      await page.evaluate(()=>{
+        window.test.setUser(null);
+        window.nutritionStore.loadDiaryEntries=async()=>[{title:'Яйцо',portion:2,portionUnit:'шт.',calories:150,protein:13,fat:10,carbs:1,mealType:'Завтрак'}];
+        window.test.setUser({uid:'advice-user',getIdToken:async()=> 'test-token'});
+      });
+      const changedDeadline=Date.now()+8000;
+      while(posts<2 && Date.now()<changedDeadline) await new Promise(resolve=>setTimeout(resolve,50));
+      assert.equal(posts,2,'Changed menu receives a new advice request');
+      await page.evaluate(()=>window.test.setUser(null));
+      assert.equal(await page.locator('#dailyAdvice').isHidden(),true);
+    });
+
     const listeners = {}, stored = [];
     const cached = { ok: true, name: 'cached' };
     let fetchResult = () => new Promise(() => {});

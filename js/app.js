@@ -1,9 +1,10 @@
-import { APP_VERSION, RELEASE_DATE, DEFAULT_PROFILE, MEAL_TYPES, MAX_PHOTO_BYTES, safeNumber, formatNumber, firstName, normalizeTitle, mealTypeRank, mealTypeIcon, nutritionTargets, scaleNutrition, addNutrition, subtractNutrition, macroFields } from "./core.js";
+import { parsePortionDescription, matchingProducts, APP_VERSION, RELEASE_DATE, DEFAULT_PROFILE, MEAL_TYPES, MAX_PHOTO_BYTES, safeNumber, formatNumber, firstName, normalizeTitle, mealTypeRank, mealTypeIcon, nutritionTargets, scaleNutrition, addNutrition, subtractNutrition, macroFields } from "./core.js";
 import { todayKey, dateKeyFor, diaryTitleForDate, formatDayTitle, formatShortDate, minutesUntilNextLocalDay } from "./date.js";
 import { hasStore, has, call, loadProfile as loadStoredProfile, accountDefaults, cachedProfilePreview, getAuthStatus, signInWithGoogle, onAuthChanged, onAuthStatus, onStoreReady, onProfileUpdated } from "./storage.js";
 import { toast, setText, showScreen, openModal, closeModal, openDialog, showAiDiagnostic, removeAiDiagnostic, setAiDebug, clearAiDebug, showCalculationResult } from "./ui.js";
 import { askAi, getAiToken, requestAiAdvice, clearErrors, clearServiceError, availability } from "./ai-client.js";
 import { initAiAvailability } from "./ai-availability.js";
+import { initDailyAdvice } from "./daily-advice.js";
 import { initAiQuota } from "./ai-quota.js";
 import { createMealTimeline } from "./timeline.js";
 import { preparePhoto, openPhotoPicker } from "./photo-picker.js";
@@ -36,6 +37,7 @@ let lastCalculatedUnitWeight = null;
 let lastNutritionClarification = null;
 let recognizedManualMealEstimate = null;
 let savedMealEstimate = null;
+let describedPortion = null;
 let savedMealProducts = [];
 let savedMealProductsUid = "";
 let savedMealProductsLoading = null;
@@ -695,6 +697,9 @@ function setPortionUnit(value) {
 }
 
 function setAutomaticPortionUnit() {
+  if (describedPortion?.title === normalizeTitle(element("mealName").value) && describedPortion.amount === Number(element("portion").value)) { setPortionUnit(describedPortion.unit); return; }
+  const described = parsePortionDescription(element("mealName").value);
+  if (described.amount === Number(element("portion").value)) { setPortionUnit(described.unit); return; }
   setPortionUnit(resolvePortionUnit(element("mealName").value.trim(), Number(element("portion").value)));
 }
 
@@ -720,7 +725,7 @@ function validateMealEstimate() {
   const portion = element("portion");
   [name, portion].forEach(clearMealEstimateError);
   const amount = Number(portion.value);
-  const input = !name.value.trim() ? name : (!Number.isFinite(amount) || amount <= 0 ? portion : null);
+  const input = !name.value.trim() ? name : (portion.value.trim() && (!Number.isFinite(amount) || amount <= 0) ? portion : null);
   if (!input) return true;
   const message = input === name
     ? "Введите название блюда."
@@ -766,6 +771,8 @@ function buildMealEntry() {
 // Форма добавления блюда: запись появляется в дневнике только после «Сохранить».
 function saveMeal(event) {
   event.preventDefault();
+  applyDescriptionPortion();
+  if (!Number(element("portion").value)) { toast("Укажите количество в названии или рассчитайте порцию с ИИ"); element("portion").focus(); return; }
   setAutomaticPortionUnit();
   const entry = buildMealEntry();
   const stored = { ...entry, id: crypto.randomUUID() };
@@ -804,10 +811,10 @@ function renderMealSuggestions(products) {
   const input = element("mealName");
   if (!container) return;
   container.replaceChildren();
-  const query = normalizeTitle(input?.value);
+  const query = normalizeTitle(parsePortionDescription(input?.value).title);
   const unique = [...new Map(products.map(product => [normalizeTitle(product.title), product])).values()];
   const matches = unique
-    .filter(product => !query || normalizeTitle(product.title).includes(query))
+    .filter(product => !query || matchingProducts([product], input?.value).length)
     .sort((left, right) => left.title.localeCompare(right.title, "ru"))
     .slice(0, 30);
   for (const product of matches) {
@@ -820,8 +827,11 @@ function renderMealSuggestions(products) {
     option.textContent = product.title.trim();
     option.onmousedown = event => event.preventDefault();
     option.onclick = () => {
+      applyDescriptionPortion();
+      const chosenUnit = portionUnit();
       input.value = product.title.trim();
-      applySavedMealProduct();
+      if (describedPortion) describedPortion.title = normalizeTitle(input.value);
+      applySavedMealProduct(chosenUnit);
       container.hidden = true;
       input.setAttribute("aria-expanded", "false");
       skipMealSuggestionsOnFocus = true;
@@ -875,20 +885,28 @@ async function loadMealSuggestions() {
 }
 
 // Выбор из личной базы не задаёт порцию: БЖУ пересчитаются после её ввода.
-function applySavedMealProduct() {
+function applySavedMealProduct(chosenUnit) {
+  applyDescriptionPortion();
+  if (typeof chosenUnit === "string") setPortionUnit(chosenUnit);
   const title = normalizeTitle(element("mealName")?.value);
   const product = savedMealProducts.find(item => normalizeTitle(item.title) === title);
   if (!product) return;
   savedMealEstimate = {
     title,
     portion: Number(product.portion),
+    unitWeight: Number(product.unitWeight) || null,
+    portionUnit: product.unitWeight ? "шт." : "г",
     calories: Number(product.calories),
     protein: Number(product.protein),
     fat: Number(product.fat),
     carbs: Number(product.carbs),
   };
+  if (product.unitWeight) lastCalculatedUnitWeight = { title, weight: Number(product.unitWeight) };
   clearFormNutrition();
-  toast("Введите размер порции — БЖУ пересчитаются по данным личной базы");
+  if (Number(element("portion").value) > 0) {
+    fillSavedMealNutrition();
+    if (!element("calories").value) toast("Для количества штук нужен вес: нажмите ✦, ИИ предложит оценку");
+  } else toast("Укажите количество в названии или нажмите ✦ для оценки порции");
 }
 
 function fillSavedMealNutrition() {
@@ -898,13 +916,19 @@ function fillSavedMealNutrition() {
     savedMealEstimate = null;
     return;
   }
-  const scaled = scaleNutrition(base, Number(element("portion").value));
+  let target = Number(element("portion").value);
+  const targetUnit = portionUnit();
+  if (base.portionUnit !== targetUnit) {
+    const weight = base.unitWeight || (lastCalculatedUnitWeight?.title === base.title ? lastCalculatedUnitWeight.weight : null);
+    if (!weight) { clearFormNutrition(); return; }
+    target = targetUnit === "шт." ? target * weight : target / weight;
+  }
+  const scaled = scaleNutrition(base, target);
   if (!scaled) {
     clearFormNutrition();
     return;
   }
   setFormNutrition(scaled);
-  setAutomaticPortionUnit();
 }
 
 function fillRecognizedMealNutrition() {
@@ -957,20 +981,37 @@ function setCalculateButton(busy) {
   button.textContent = busy ? "Рассчитываю…" : "✦ Рассчитать с ИИ";
 }
 
-// Один запрос к ИИ на блюдо. Без введённой порции считается база на 100 г,
-// которая остаётся только в открытой форме для последующего пересчёта.
+// Количество берём из названия или поля; иначе ИИ предлагает типичную порцию.
+// Подходящий продукт базы пользователь выбирает до расчёта.
+function applyDescriptionPortion() {
+  const parsed = parsePortionDescription(element("mealName").value);
+  if (!element("portion").value && parsed.amount) {
+    element("portion").value = String(parsed.amount);
+    setPortionUnit(parsed.unit);
+    describedPortion = { ...parsed, title: normalizeTitle(element("mealName").value) };
+  }
+}
+
 async function calculateMealNutrition(clarification = "") {
+  applyDescriptionPortion();
   if (!validateMealEstimate()) return;
+  await loadMealSuggestions();
+  if (!savedMealEstimate && matchingProducts(savedMealProducts, element("mealName").value).length) {
+    renderMealSuggestions(savedMealProducts);
+    toast("Выберите подходящий продукт из вашей базы");
+    return;
+  }
+  const selectedBase = savedMealEstimate;
   const title = element("mealName").value.trim();
   const originalPortion = element("portion").value;
   const hasPortion = Number(originalPortion) > 0;
-  const calculationPortion = hasPortion ? Number(originalPortion) : 100;
+  const calculationPortion = hasPortion ? Number(originalPortion) : null;
   const unit = hasPortion ? portionUnit() : "г";
 
   clearFormNutrition();
   savedMealEstimate = null;
   recognizedManualMealEstimate = null;
-  if (!hasPortion) element("portion").value = "100";
+
 
   const timeline = createMealTimeline("calculation");
   setCalculateButton(true);
@@ -987,7 +1028,8 @@ async function calculateMealNutrition(clarification = "") {
     const clarificationHint = clarification
       ? `Пользователь уточнил: «${clarification}». Теперь выполни расчёт.`
       : "Если для сложного блюда не хватает важной детали, не рассчитывай наугад: верни пустой список продуктов и задай в поле advice один короткий уточняющий вопрос.";
-    const message = `Оцени пищевую ценность блюда «${title}» для порции ${calculationPortion} ${unit}. ${weightHint} ${clarificationHint} Верни один продукт с калориями, белками, жирами и углеводами именно для этой порции. В поле portion верни общий вес порции в граммах.`;
+    const portionHint = hasPortion ? `для порции ${calculationPortion} ${unit}` : "для обычной порции: количество/вес из названия имеет приоритет, иначе предложи типичную порцию и явно обозначь её как оценочную";
+    const message = `Оцени пищевую ценность блюда «${title}» ${portionHint}. ${weightHint} ${clarificationHint} Верни один продукт с калориями, белками, жирами и углеводами именно для этой порции. В поле portion верни общий вес порции в граммах.`;
     const result = await askAi({ message, timeline });
     if (result.status === "no-token") return;
     if (result.status === "signed-out") {
@@ -1019,8 +1061,7 @@ async function calculateMealNutrition(clarification = "") {
   }
 
   if (failure) {
-    // Возвращаем исходное значение до показа окна, чтобы подсказка поля не
-    // ссылалась на временные 100 г.
+    // При ошибке оставляем исходную порцию без подстановки оценочного веса.
     if (!hasPortion) element("portion").value = originalPortion;
     showCalculationResult({ error: `Не удалось рассчитать: ${failure}` });
     return;
@@ -1029,25 +1070,28 @@ async function calculateMealNutrition(clarification = "") {
   setFormNutrition(estimate);
   const result = {
     title,
-    portionLabel: `${calculationPortion} ${unit}`,
+    portionLabel: hasPortion ? `${calculationPortion} ${unit}` : `${estimate.portion} г (оценка ИИ)`,
     calories: estimate.calories,
     protein: estimate.protein,
     fat: estimate.fat,
     carbs: estimate.carbs,
   };
   if (!hasPortion) {
-    // Основа на 100 г остаётся в форме и пересчитывается после ввода порции.
-    recognizedManualMealEstimate = { portion: 100, ...readFormNutrition() };
-    savedMealEstimate = null;
-    element("portion").value = originalPortion;
-    clearFormNutrition();
-    clearMealEstimateError(element("portion"));
-    setPortionUnit("г");
-  } else {
-    recognizedManualMealEstimate = { portion: Number(estimate.portion) || calculationPortion, ...readFormNutrition() };
-    if (unit === "шт." && Number(estimate.portion) > 0) {
-      lastCalculatedUnitWeight = { title: normalizeTitle(title), weight: Number(estimate.portion) / calculationPortion };
+    const proposedWeight = Number(estimate.portion);
+    if (!Number.isFinite(proposedWeight) || proposedWeight <= 0 || proposedWeight > 10000) {
+      clearFormNutrition(); showCalculationResult({ error: "ИИ не предложил корректный вес. Укажите количество и повторите." }); return;
     }
+    element("portion").value = String(proposedWeight);
+    setPortionUnit("г");
+  }
+  recognizedManualMealEstimate = { portion: Number(element("portion").value), ...readFormNutrition() };
+  if (hasPortion && unit === "шт." && Number(estimate.portion) > 0) {
+    lastCalculatedUnitWeight = { title: normalizeTitle(title), weight: Number(estimate.portion) / calculationPortion };
+  }
+  if (selectedBase) {
+    savedMealEstimate = selectedBase;
+    fillSavedMealNutrition();
+    Object.assign(result, readFormNutrition());
   }
   showCalculationResult(result);
 }
@@ -1097,6 +1141,7 @@ async function recognizeMealPhoto(file) {
         openMeal();
         element("mealDate").value = "today";
         fillMealForm(estimate);
+        loadMealSuggestions().then(products => { if (matchingProducts(products, estimate.title).length) { renderMealSuggestions(products); toast("Можно выбрать соответствующий продукт из вашей базы"); } });
         // Сохраняем базу распознавания, иначе при изменении порции БЖУ не пересчитаются.
         recognizedManualMealEstimate = {
           portion: Number(estimate.portion) || 100,
@@ -1130,6 +1175,7 @@ function openPhotoMealInAddForm(data) {
   element("mealDate").value = "today";
   element("mealType").value = MEAL_TYPES.includes(estimate.mealType) ? estimate.mealType : "Перекус";
   fillMealForm(estimate);
+  loadMealSuggestions().then(products => { if (matchingProducts(products, estimate.title).length) { renderMealSuggestions(products); toast("Можно выбрать соответствующий продукт из вашей базы"); } });
   // Сохраняем базу распознавания, иначе при изменении порции БЖУ не пересчитаются.
   recognizedManualMealEstimate = {
     portion: Number(estimate.portion) || 100,
@@ -1545,6 +1591,7 @@ function initMealForm() {
     ["mealName", "portion"].forEach(id => clearMealEstimateError(element(id)));
     clearFormNutrition();
     setPortionUnit("г");
+    describedPortion = null;
     savedMealEstimate = null;
     recognizedManualMealEstimate = null;
     lastCalculatedUnitWeight = null;
@@ -1723,6 +1770,7 @@ function boot() {
   initViewport();
   initAiAvailability();
   initAiQuota();
+  initDailyAdvice();
 
   // Хранилище создаётся модулем firebase-client.js до этого модуля, поэтому
   // начальная загрузка запускается напрямую, а события обслуживают обновления.
