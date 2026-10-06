@@ -52,27 +52,11 @@ service cloud.firestore {
     }
     function validPlanItems(items) {
       let count = items.size();
-      return items is list && count <= 20 && (count == 0 || (true
-        && (count <= 0 || validPlanItem(items[0]))
-        && (count <= 1 || validPlanItem(items[1]))
-        && (count <= 2 || validPlanItem(items[2]))
-        && (count <= 3 || validPlanItem(items[3]))
-        && (count <= 4 || validPlanItem(items[4]))
-        && (count <= 5 || validPlanItem(items[5]))
-        && (count <= 6 || validPlanItem(items[6]))
-        && (count <= 7 || validPlanItem(items[7]))
-        && (count <= 8 || validPlanItem(items[8]))
-        && (count <= 9 || validPlanItem(items[9]))
-        && (count <= 10 || validPlanItem(items[10]))
-        && (count <= 11 || validPlanItem(items[11]))
-        && (count <= 12 || validPlanItem(items[12]))
-        && (count <= 13 || validPlanItem(items[13]))
-        && (count <= 14 || validPlanItem(items[14]))
-        && (count <= 15 || validPlanItem(items[15]))
-        && (count <= 16 || validPlanItem(items[16]))
-        && (count <= 17 || validPlanItem(items[17]))
-        && (count <= 18 || validPlanItem(items[18]))
-        && (count <= 19 || validPlanItem(items[19]))));
+      return items is list && count <= 20 && (count == 0 || (
+        (count <= 0 || validPlanItem(items[0])) && (count <= 1 || validPlanItem(items[1])) && (count <= 2 || validPlanItem(items[2])) && (count <= 3 || validPlanItem(items[3])) && (count <= 4 || validPlanItem(items[4]))
+        && (count <= 5 || ((count <= 5 || validPlanItem(items[5])) && (count <= 6 || validPlanItem(items[6])) && (count <= 7 || validPlanItem(items[7])) && (count <= 8 || validPlanItem(items[8])) && (count <= 9 || validPlanItem(items[9]))))
+        && (count <= 10 || ((count <= 10 || validPlanItem(items[10])) && (count <= 11 || validPlanItem(items[11])) && (count <= 12 || validPlanItem(items[12])) && (count <= 13 || validPlanItem(items[13])) && (count <= 14 || validPlanItem(items[14]))))
+        && (count <= 15 || ((count <= 15 || validPlanItem(items[15])) && (count <= 16 || validPlanItem(items[16])) && (count <= 17 || validPlanItem(items[17])) && (count <= 18 || validPlanItem(items[18])) && (count <= 19 || validPlanItem(items[19]))))));
     }
     function validDayPlan(data) {
       return hasOnly(data, ['date', 'meals', 'updatedAt']) && validDate(data.date)
