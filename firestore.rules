@@ -46,32 +46,33 @@ service cloud.firestore {
     function validWaterLog(data) { return hasOnly(data, ['date', 'glasses', 'updatedAt']) && validDate(data.date) && validNumber(data.glasses, 0, 8) && data.updatedAt is timestamp; }
     function validWeightEntry(data) { return hasOnly(data, ['date', 'weight', 'updatedAt']) && validDate(data.date) && validNumber(data.weight, 20, 500) && data.updatedAt is timestamp; }
     function validPlanItem(item) {
-      return item is map && hasOnly(item, ['name', 'calories'])
+      return item is map && item.keys().hasOnly(['name', 'calories'])
         && item.name is string && item.name.size() > 0 && item.name.size() <= 200
-        && validNumber(item.calories, 0, 50000);
+        && item.calories is number && item.calories >= 0 && item.calories <= 50000;
     }
     function validPlanItems(items) {
-      return items is list && items.size() <= 20
-        && (items.size() <= 0 || validPlanItem(items[0]))
-        && (items.size() <= 1 || validPlanItem(items[1]))
-        && (items.size() <= 2 || validPlanItem(items[2]))
-        && (items.size() <= 3 || validPlanItem(items[3]))
-        && (items.size() <= 4 || validPlanItem(items[4]))
-        && (items.size() <= 5 || validPlanItem(items[5]))
-        && (items.size() <= 6 || validPlanItem(items[6]))
-        && (items.size() <= 7 || validPlanItem(items[7]))
-        && (items.size() <= 8 || validPlanItem(items[8]))
-        && (items.size() <= 9 || validPlanItem(items[9]))
-        && (items.size() <= 10 || validPlanItem(items[10]))
-        && (items.size() <= 11 || validPlanItem(items[11]))
-        && (items.size() <= 12 || validPlanItem(items[12]))
-        && (items.size() <= 13 || validPlanItem(items[13]))
-        && (items.size() <= 14 || validPlanItem(items[14]))
-        && (items.size() <= 15 || validPlanItem(items[15]))
-        && (items.size() <= 16 || validPlanItem(items[16]))
-        && (items.size() <= 17 || validPlanItem(items[17]))
-        && (items.size() <= 18 || validPlanItem(items[18]))
-        && (items.size() <= 19 || validPlanItem(items[19]));
+      let count = items.size();
+      return items is list && count <= 20 && (count == 0 || (true
+        && (count <= 0 || validPlanItem(items[0]))
+        && (count <= 1 || validPlanItem(items[1]))
+        && (count <= 2 || validPlanItem(items[2]))
+        && (count <= 3 || validPlanItem(items[3]))
+        && (count <= 4 || validPlanItem(items[4]))
+        && (count <= 5 || validPlanItem(items[5]))
+        && (count <= 6 || validPlanItem(items[6]))
+        && (count <= 7 || validPlanItem(items[7]))
+        && (count <= 8 || validPlanItem(items[8]))
+        && (count <= 9 || validPlanItem(items[9]))
+        && (count <= 10 || validPlanItem(items[10]))
+        && (count <= 11 || validPlanItem(items[11]))
+        && (count <= 12 || validPlanItem(items[12]))
+        && (count <= 13 || validPlanItem(items[13]))
+        && (count <= 14 || validPlanItem(items[14]))
+        && (count <= 15 || validPlanItem(items[15]))
+        && (count <= 16 || validPlanItem(items[16]))
+        && (count <= 17 || validPlanItem(items[17]))
+        && (count <= 18 || validPlanItem(items[18]))
+        && (count <= 19 || validPlanItem(items[19]))));
     }
     function validDayPlan(data) {
       return hasOnly(data, ['date', 'meals', 'updatedAt']) && validDate(data.date)
