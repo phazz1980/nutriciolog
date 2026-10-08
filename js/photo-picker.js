@@ -10,6 +10,27 @@ export function readFileAsDataUrl(file) {
   });
 }
 
+function nativeCameraPlugin() {
+  return window.Capacitor?.Plugins?.Camera?.getPhoto ? window.Capacitor.Plugins.Camera : null;
+}
+
+async function takeNativePhoto() {
+  const camera = nativeCameraPlugin();
+  if (!camera) return null;
+  const photo = await camera.getPhoto({
+    quality: 85,
+    width: 1600,
+    height: 1600,
+    resultType: "base64",
+    source: "CAMERA",
+    direction: "REAR",
+    correctOrientation: true,
+  });
+  if (!photo?.base64String) throw new Error("Камера не вернула изображение");
+  const bytes = Uint8Array.from(atob(photo.base64String), char => char.charCodeAt(0));
+  return new File([bytes], `camera-${Date.now()}.jpeg`, { type: "image/jpeg" });
+}
+
 // Keep the whole JSON request below the API Gateway limit, including Base64.
 export async function preparePhoto(file) {
   if (!/^image\/(jpeg|png|webp)$/.test(file.type)) throw new Error("Используйте JPEG, PNG или WebP");
@@ -40,7 +61,7 @@ export async function preparePhoto(file) {
   } finally { URL.revokeObjectURL(url); }
 }
 
-export function openPhotoPicker(button, input) {
+export function openPhotoPicker(button, input, { onNativeCameraPhoto } = {}) {
   if (!button || !input) return;
   document.getElementById("photoSourcePicker")?.remove();
 
@@ -62,15 +83,24 @@ export function openPhotoPicker(button, input) {
     backdrop.remove();
     button.focus();
   };
-  const pick = useCamera => {
+  const pick = async useCamera => {
     document.getElementById("photoSourcePicker")?.remove();
+    if (useCamera && nativeCameraPlugin()) {
+      try {
+        const file = await takeNativePhoto();
+        if (file) onNativeCameraPhoto?.(file);
+      } catch {
+        // Closing or denying the native camera is not an error in the form.
+      }
+      return;
+    }
     if (useCamera) input.setAttribute("capture", "environment");
     else input.removeAttribute("capture");
     input.click();
   };
 
-  camera.onclick = () => pick(true);
-  gallery.onclick = () => pick(false);
+  camera.onclick = () => { void pick(true); };
+  gallery.onclick = () => { void pick(false); };
   cancel.onclick = close;
   backdrop.addEventListener("click", event => { if (event.target === backdrop) close(); });
   backdrop.addEventListener("keydown", event => {

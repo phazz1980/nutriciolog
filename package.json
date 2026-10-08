@@ -1,11 +1,20 @@
 {
   "private": true,
   "scripts": {
+    "build:android-web": "node scripts/build-android-web.mjs",
+    "android:sync": "npm run build:android-web && npx cap sync android",
+    "android:open": "npx cap open android",
     "test:rules": "firebase emulators:exec --only firestore --project demo-x20-rules --config firebase.test.json \"node --test --test-concurrency=1 tests/firestore-*.test.cjs\""
   },
   "devDependencies": {
+    "@capacitor/android": "^7.6.9",
+    "@capacitor/cli": "^7.6.9",
+    "@capacitor/core": "^7.6.9",
     "@firebase/rules-unit-testing": "5.0.2",
     "firebase": "12.19.0",
     "firebase-tools": "15.32.1"
+  },
+  "dependencies": {
+    "@capacitor/camera": "^7.0.5"
   }
 }

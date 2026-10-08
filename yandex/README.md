@@ -36,8 +36,10 @@ Yandex при прямом HTTP-вызове удаляет `Authorization`, п�
 заголовка; текущая автоматическая настройка относится только к прямому URL.
 
 Для теста отдельной копии сайта заменить `AI_ENDPOINT` в `js/ai-client.js`
-на URL тестовой функции. Origins ограничены двумя текущими доменами. Новый
-тестовый домен нужно явно добавить в ALLOWED_ORIGINS и Firebase Authorized domains.
+на URL тестовой функции. Origins ограничены двумя текущими доменами и
+`https://localhost` для Android-контейнера Capacitor. Новый тестовый домен нужно
+явно добавить в ALLOWED_ORIGINS и Firebase Authorized domains; для Capacitor
+добавьте в Firebase домен `localhost` (без схемы).
 Не менять рабочий сайт до проверки текста, фото, 401, CORS и доступа без VPN.
 Откат: вернуть прежний AI_ENDPOINT. Публикация сайта требует повышения версии
 интерфейса и кэша согласно AGENTS.md.

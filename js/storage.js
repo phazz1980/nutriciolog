@@ -31,20 +31,12 @@ export function cachedProfilePreview() {
   return window.nutritionStore?.getCachedProfilePreview?.() || null;
 }
 
-export function getAuthStatus() {
-  return window.getFirebaseAuthStatus?.();
-}
-
 export function getAuthErrorMessage(error) {
   return window.getAuthErrorMessage?.(error) || "Не удалось выполнить действие. Проверьте соединение и повторите.";
 }
 
 export function getFirebaseIdToken() {
   return window.getFirebaseIdToken;
-}
-
-export function signInWithGoogle() {
-  return window.firebaseSignInWithGoogle;
 }
 
 export function onAuthChanged(handler) {
@@ -60,9 +52,3 @@ export function onProfileUpdated(handler) {
   window.addEventListener("nutrition-profile-updated", handler);
 }
 
-// Возвращает функцию отписки. Без неё слушатель статуса входа оставался бы
-// после закрытия окна входа и продолжал обращаться к удалённой разметке.
-export function onAuthStatus(handler) {
-  window.addEventListener("nutrition-auth-status", handler);
-  return () => window.removeEventListener("nutrition-auth-status", handler);
-}

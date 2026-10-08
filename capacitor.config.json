@@ -1,0 +1,8 @@
+{
+  "appId": "ru.phazz.nutriciolog",
+  "appName": "Мой нутрициолог",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  }
+}
