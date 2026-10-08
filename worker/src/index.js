@@ -8,6 +8,8 @@ const WORKER_VERSION = "0.1.20";
 const ALLOWED_ORIGINS = new Set([
   "https://nutriciolog.pages.dev",
   "https://nutriciolog-x20.website.yandexcloud.net",
+  // Capacitor Android serves the bundled client from this fixed local HTTPS origin.
+  "https://localhost",
 ]);
 
 const DEFAULT_ORIGIN = "https://nutriciolog.pages.dev";

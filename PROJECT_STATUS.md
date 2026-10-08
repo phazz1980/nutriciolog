@@ -4,6 +4,22 @@
 Версия интерфейса в исходниках: `v0.2.51` (2026-10-06)
 Версия Worker в исходниках: `0.1.20`
 
+## Старт Android-направления (2026-10-08)
+
+- Для Android выбран Capacitor 7: он позволит использовать текущий статический PWA-клиент без переноса Firebase-логики или AI-ключей в приложение.
+- Локальная среда видит Node.js/npm, но не обнаружила Java/Gradle/Android SDK. Установка пакетов `@capacitor/*` из npm в этой сессии не завершилась и не изменила `package.json` или lockfile; Android-каталог намеренно не создавался вручную.
+- Следующий шаг: обеспечить доступ к npm и Android SDK, установить `@capacitor/core`, `@capacitor/cli` и `@capacitor/android` одной согласованной версией, затем сгенерировать `android/` командой Capacitor и проверить debug-сборку на устройстве. Signing key и любые секреты не добавлять в репозиторий.
+
+## Android-каркас и первая сборка (2026-10-08)
+
+- Добавлены Capacitor `7.6.9`, `capacitor.config.json`, сборщик статической оболочки `scripts/build-android-web.mjs` и каталог `android/`. Постоянный package ID: `ru.phazz.nutriciolog`; результат `npm run android:sync` не включает `node_modules`, Worker, архивы или секреты.
+- `android/app/build/outputs/apk/debug/app-debug.apk` успешно собран на Temurin JDK 21. APK и локальные `android/local.properties` игнорируются Git.
+- Debug APK установлен и запущен в Android Emulator `Medium_Phone_API_36.1` (API 36.1): главный экран дневника и ручное добавление блюда работают. Проверены email-вход, загрузка существующих Firebase-записей и нейтральный запрос к ИИ после развёртывания Yandex Function и добавления `localhost` в Firebase Authorized domains. Системная галерея открывается; у этого AVD нет доступной камеры. Камеру и голос нужно проверить на физическом устройстве.
+- Pixel 8 подключён по Wireless debugging, debug APK установлен и запущен (`ru.phazz.nutriciolog.MainActivity`). Подключение не требует USB; перед последующими ADB-командами проверять, что устройство остаётся в состоянии `device`.
+- Исправлено: HTML `capture="environment"` в Android WebView открывал системный выбор фото вместо камеры. Добавлен Capacitor Camera plugin; после синхронизации и новой debug-сборки действие «Фото» на Pixel 8 открыло нативный видоискатель задней камеры. Распознавание и отправка фото пока намеренно не проверялись.
+- В нативном контейнере PWA service worker не регистрируется, чтобы кэш браузера не перекрывал файлы, доставленные Capacitor. Для origin `https://localhost` добавлено точечное CORS-разрешение в исходники Worker.
+- Перед проверкой ИИ на реальном Android нужно развернуть обновлённую Yandex Cloud Function из `yandex/build.py` и вручную добавить `localhost` в Firebase Authorized domains. Следующий шаг — открыть `android/` в Android Studio, установить debug APK на устройство и проверить вход, камеру, галерею, голос, ИИ и явное подтверждение сохранения блюда.
+
 ## Назначение
 
 «Мой нутрициолог» — статическое PWA в Yandex Object Storage:

@@ -37,6 +37,7 @@ ui-debug.log
 coverage/
 dist/
 build/
+www/
 
 yandex/function.zip
 .test-tools/
