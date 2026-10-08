@@ -144,7 +144,7 @@ let firebaseJwks = { expiresAt: 0, keys: {} };
 class AccessError extends Error {}
 
 async function verifyFirebaseToken(authorization) {
-  if (!authorization?.startsWith("Bearer ")) throw new AccessError("Войдите через Google, чтобы воспользоваться ИИ.");
+  if (!authorization?.startsWith("Bearer ")) throw new AccessError("Войдите в аккаунт, чтобы воспользоваться ИИ.");
   const [encodedHeader, encodedPayload, encodedSignature] = authorization.slice(7).split(".");
   if (!encodedHeader || !encodedPayload || !encodedSignature) throw new AccessError("Недействительный токен входа.");
   const header = decodeJwtPart(encodedHeader);

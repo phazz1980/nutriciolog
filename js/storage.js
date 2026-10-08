@@ -35,6 +35,12 @@ export function getAuthErrorMessage(error) {
   return window.getAuthErrorMessage?.(error) || "Не удалось выполнить действие. Проверьте соединение и повторите.";
 }
 
+// Единый снимок состояния входа для модулей ИИ и интерфейса.
+// Firebase-клиент публикует его ещё до завершения загрузки аккаунта.
+export function getAuthStatus() {
+  return window.getFirebaseAuthStatus?.() || { state: "loading", signedIn: false, pending: false, message: "" };
+}
+
 export function getFirebaseIdToken() {
   return window.getFirebaseIdToken;
 }

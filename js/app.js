@@ -652,7 +652,11 @@ function addWeight() {
   const form = dialog.querySelector("form");
   const [dateInput, weightInput] = form.querySelectorAll("input");
   dateInput.value = todayKey();
-  weightInput.value = Number(currentProfile?.weight) || "";
+  const latestEntry = [...weightHistory]
+    .filter(entry => entry?.date && Number.isFinite(Number(entry.weight)))
+    .sort((left, right) => String(left.date).localeCompare(String(right.date)))
+    .at(-1);
+  weightInput.value = Number(latestEntry?.weight ?? currentProfile?.weight) || "";
   dialog.querySelector("[data-close]").onclick = close;
   form.onsubmit = async event => {
     event.preventDefault();
