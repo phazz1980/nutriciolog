@@ -15,7 +15,7 @@ const localDateKey = () => {
   const pad = value => String(value).padStart(2, "0");
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 };
-let db, user = null;
+let db, firestoreLiteDb, firestoreLiteSdk, user = null;
 let authState = configured ? "loading" : "ready";
 let initialization = null, signInAttempt = null, guestMode = false;
 let startEmailSignIn, startEmailRegistration, startPasswordReset, startEmailVerification, authSdkCurrentUser;
@@ -337,8 +337,18 @@ async function connectFirebase() {
     import(`https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js${retry}`),
     import(`https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js${retry}`),
   ]);
+  // Lite uses ordinary HTTPS requests rather than Firestore's persistent
+  // WebChannel. Keep it as a read fallback for restrictive mobile networks.
+  firestoreLiteSdk = await import(`https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-lite.js${retry}`).catch(() => null);
   const app = initializeApp(firebaseConfig);
-  db = firestoreSdk.getFirestore(app);
+  // Android WebView behind a VPN or a filtered Wi-Fi network can drop
+  // Firestore's streaming WebChannel. Long polling is slower but keeps the
+  // same authenticated Firestore protocol and is much more reliable there.
+  const isNativeAndroid = window.Capacitor?.getPlatform?.() === "android";
+  db = isNativeAndroid
+    ? firestoreSdk.initializeFirestore(app, { experimentalForceLongPolling: true })
+    : firestoreSdk.getFirestore(app);
+  firestoreLiteDb = firestoreLiteSdk?.getFirestore(app) || null;
   window.__firestore = firestoreSdk;
   const auth = authSdk.getAuth(app);
   authSdkCurrentUser = () => auth.currentUser;
@@ -633,7 +643,22 @@ async function loadDiaryEntries(date) {
     return overlayPendingCollection("foodDiary", snapshot.docs.map(document => ({ ...document.data(), id: document.id })))
       .filter(entry => entry?.date === date);
   } catch (error) {
-    if (isTemporaryFirestoreError(error)) return overlayPendingCollection("foodDiary", []).filter(entry => entry?.date === date);
+    if (isTemporaryFirestoreError(error)) {
+      // A VPN can allow normal HTTPS while blocking WebChannel. Fall back to
+      // Firestore Lite so an existing daily menu remains visible.
+      try {
+        if (firestoreLiteDb && firestoreLiteSdk) {
+          const { collection, getDocs, query, where } = firestoreLiteSdk;
+          const snapshot = await getDocs(query(
+            collection(firestoreLiteDb, "users", user.uid, "foodDiary"),
+            where("date", "==", date),
+          ));
+          return overlayPendingCollection("foodDiary", snapshot.docs.map(document => ({ ...document.data(), id: document.id })))
+            .filter(entry => entry?.date === date);
+        }
+      } catch { /* The normal offline fallback below keeps pending local edits. */ }
+      return overlayPendingCollection("foodDiary", []).filter(entry => entry?.date === date);
+    }
     throw error;
   }
 }

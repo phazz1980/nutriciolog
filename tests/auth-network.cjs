@@ -13,16 +13,11 @@ import {registry} from './firebase-app.js';
 export const getAuth=app=>{if(app.registry!==registry)throw new Error('Duplicate Firebase app registry');return {}};
 export const browserLocalPersistence={};
 export const setPersistence=()=>Promise.resolve();
-export class GoogleAuthProvider {}
 export function onAuthStateChanged(auth, next){
   // Firebase always delivers providerData; mirror it so the app sees a realistic user.
   window.test.setUser=user=>next(window.test.prepareUser?window.test.prepareUser(user):user);
   if(!window.test.delaySession)queueMicrotask(()=>next(window.test.user));
   return ()=>{};
-}
-export function signInWithPopup(){
-  window.test.popupCalls++;
-  return new Promise((resolve,reject)=>{window.test.finishLogin=resolve;window.test.failLogin=reject});
 }
 export const signOut=()=>{window.test.setUser(null);return Promise.resolve()};
 export const signInWithEmailAndPassword=()=>{};
@@ -129,24 +124,15 @@ export const serverTimestamp=()=>0;
       await page.waitForFunction(() => window.getFirebaseAuthStatus?.().state === 'ready');
     });
 
-    await check('Popup is single-flight; a network failure is actionable and retry succeeds', {}, async ({ page }) => {
+    await check('Auth dialog leads to email sign-in form and preserves the meal draft', {}, async ({ page }) => {
       await page.waitForFunction(() => window.getFirebaseAuthStatus().state === 'ready');
-      await page.evaluate(() => {openMeal();window.showAuthRequiredDialog()});
+      await page.evaluate(() => { openMeal(); mealName.value = 'Salad'; portion.value = '200'; window.showAuthRequiredDialog(); });
       if(process.env.AUTH_SCREENSHOT)await page.screenshot({path:process.env.AUTH_SCREENSHOT});
-      await page.keyboard.press('Escape');
-      assert.equal(await page.locator('#authRequiredDialog').count(),0);
-      await page.evaluate(() => { window.showAuthRequiredDialog(); document.querySelector('#authRequiredDialog .primary').click(); window.firebaseSignInWithGoogle().catch(()=>{}); });
-      assert.equal(await page.evaluate(() => window.test.popupCalls), 1);
-      assert.equal(await page.locator('#authRequiredDialog .primary').isDisabled(), true);
-      await page.waitForFunction(() => window.getFirebaseAuthStatus().message.includes('больше времени'));
-      assert.match(await page.locator('#authRequiredDialog [role=status]').textContent(), /больше времени/);
-      await page.evaluate(() => window.test.failLogin({ code: 'auth/network-request-failed' }));
-      await page.waitForFunction(() => !window.getFirebaseAuthStatus().pending);
-      assert.match(await page.locator('#authRequiredDialog [role=status]').textContent(), /Проверьте интернет/);
       await page.locator('#authRequiredDialog .primary').click();
-      await page.evaluate(() => { window.test.setUser({ uid: 'account', getIdToken: async () => 'test-token' }); window.test.finishLogin({}); });
       await page.waitForFunction(() => !document.getElementById('authRequiredDialog'));
-      assert.equal(await page.evaluate(() => window.test.popupCalls), 2);
+      assert.equal(await page.locator('#profile.active').count(), 1);
+      assert.equal(await page.locator('#mealName').inputValue(), 'Salad');
+      assert.equal(await page.locator('#portion').inputValue(), '200');
     });
 
     await check('A delayed token or SDK error does not open the signed-out dialog', {}, async ({ page }) => {
@@ -158,19 +144,6 @@ export const serverTimestamp=()=>0;
       await page.evaluate(() => window.calculateMealNutrition());
       assert.equal(await page.locator('#authRequiredDialog').count(), 0);
       assert.equal(await page.evaluate(() => window.test.writes.length), 0);
-    });
-
-    await check('Popup blocked/closed errors retain the form and allow another attempt', {}, async ({ page }) => {
-      await page.waitForFunction(() => window.getFirebaseAuthStatus().state === 'ready');
-      await page.evaluate(() => { mealName.value='Salad'; portion.value='200'; window.showAuthRequiredDialog(); });
-      for (const code of ['auth/popup-blocked', 'auth/popup-closed-by-user']) {
-        await page.locator('#authRequiredDialog .primary').click();
-        await page.evaluate(code => window.test.failLogin({ code }), code);
-        await page.waitForFunction(() => !window.getFirebaseAuthStatus().pending);
-        assert.match(await page.locator('#authRequiredDialog [role=status]').textContent(), /Safari\/Chrome/);
-        assert.equal(await page.locator('#mealName').inputValue(), 'Salad');
-        assert.equal(await page.locator('#portion').inputValue(), '200');
-      }
     });
 
     await check('Cached profile renders before Firestore and refreshes in the background', { holdProfile: true }, async ({ page }) => {
