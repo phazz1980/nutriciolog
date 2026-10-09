@@ -9,14 +9,15 @@ export function createHandler(service, origins) {
       ...(origins.has(origin) ? {
         'Access-Control-Allow-Origin': origin,
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-X20-Authorization',
       } : {}),
     };
     const reply = (body, status = 200) => new Response(JSON.stringify(body), { status, headers });
     if (origin && !origins.has(origin)) return reply({ error: 'origin_denied' }, 403);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers });
     if (request.method !== 'POST') return reply({ error: 'method_not_allowed' }, 405);
-    const action = new URL(request.url).pathname.split('/').pop();
+    const url = new URL(request.url);
+    const action = url.searchParams.get('action') || url.pathname.split('/').pop();
     if (!['start', 'inspect', 'approve', 'poll', 'cancel'].includes(action)) return reply({ error: 'not_found' }, 404);
     try {
       if (!request.headers.get('content-type')?.startsWith('application/json')) throw new PairingError('invalid_json');

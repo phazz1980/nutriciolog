@@ -6,9 +6,10 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
 (async () => {
   const root = path.resolve(__dirname, '..');
+  let yandexMode = false;
   const server = http.createServer((req, res) => {
     res.setHeader('Content-Type', req.url.endsWith('.js') ? 'text/javascript' : 'text/html');
-    if (req.url === '/js/wear-config.js') return res.end("export const WEAR_AUTH_ENDPOINT='https://pairing.test';");
+    if (req.url === '/js/wear-config.js') return res.end(`export const WEAR_AUTH_ENDPOINT='${yandexMode ? 'https://functions.yandexcloud.net/test-function' : 'https://pairing.test'}';`);
     if (req.url === '/js/wear-pairing.js') return res.end(fs.readFileSync(path.join(root, 'js/wear-pairing.js')));
     res.end(`<div id="profileDocuments"></div><script>window.uid='owner';window.getFirebaseIdToken=async()=>window.uid?'test-token':null;window.nutritionStore={getAccountProfileDefaults:()=>({uid:window.uid})};</script><script type="module" src="/js/wear-pairing.js"></script>`);
   });
@@ -50,6 +51,25 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(calls.length, 3);
     await page.keyboard.press('Escape');
     assert.equal(await page.locator('#wearPairingDialog').count(), 0);
+    yandexMode = true;
+    const yandexPage = await browser.newPage();
+    const yandexCalls = [];
+    await yandexPage.route('https://functions.yandexcloud.net/**', async route => {
+      const request = route.request();
+      const url = new URL(request.url());
+      assert.equal(url.pathname, '/test-function');
+      assert.equal(request.headers()['x-x20-authorization'], 'Bearer test-token');
+      assert.equal(request.headers().authorization, undefined);
+      yandexCalls.push(url.searchParams.get('action'));
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"status":"pending"}' });
+    });
+    await yandexPage.goto(`http://127.0.0.1:${server.address().port}/#connect-watch=ABCDE23456`);
+    await yandexPage.getByRole('button', { name: 'Проверить код' }).click();
+    await yandexPage.getByRole('button', { name: 'Подтвердить подключение' }).waitFor();
+    await yandexPage.getByRole('button', { name: 'Подтвердить подключение' }).click();
+    await yandexPage.getByText('Подтверждено. Дождитесь завершения входа на часах.').waitFor();
+    assert.deepEqual(yandexCalls, ['inspect', 'approve']);
+    console.log('PASS: Yandex query actions and application auth header');
     console.log('PASS: explicit two-step approval, account change, invalid code, guest, cancellation');
   } finally { await browser?.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

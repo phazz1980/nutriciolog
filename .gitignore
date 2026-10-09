@@ -39,4 +39,5 @@ dist/
 build/
 
 yandex/function.zip
+wear-auth/function.zip
 .test-tools/

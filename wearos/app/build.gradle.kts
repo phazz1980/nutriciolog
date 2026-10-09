@@ -9,7 +9,8 @@ val firebaseProperties = Properties().apply {
     val file = rootProject.file("firebase.properties")
     if (file.exists()) file.inputStream().use(::load)
 }
-fun firebaseValue(name: String) = firebaseProperties.getProperty(name, "")
+fun firebaseValue(name: String) = firebaseProperties.getProperty(name,
+    if (name == "WEAR_AUTH_ENDPOINT") "https://functions.yandexcloud.net/d4e5bfebi143u6kitt0v" else "")
 
 android {
     namespace = "ru.mynutritionist.wear"
@@ -21,8 +22,8 @@ android {
         applicationId = "ru.mynutritionist.wear"
         minSdk = 30
         targetSdk = 37
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.2.1"
 
         buildConfigField("String", "FIREBASE_APP_ID", "\"${firebaseValue("FIREBASE_APP_ID")}\"")
         buildConfigField("String", "FIREBASE_API_KEY", "\"${firebaseValue("FIREBASE_API_KEY")}\"")
