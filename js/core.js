@@ -1,5 +1,5 @@
-export const APP_VERSION = "v0.2.51";
-export const RELEASE_DATE = "6 октября 2026";
+export const APP_VERSION = "v0.2.52";
+export const RELEASE_DATE = "9 октября 2026";
 
 export const MEAL_TYPES = ["Завтрак", "Обед", "Ужин", "Перекус"];
 export const MEAL_ICONS = { Завтрак: "☀️", Обед: "🍽️", Ужин: "🌙", Перекус: "🍏" };
