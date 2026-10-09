@@ -16,9 +16,12 @@ async function request(action, code, signal) {
   if (endpoint.protocol !== 'https:') throw new Error('Нужен защищённый адрес сервиса.');
   const token = await window.getFirebaseIdToken?.();
   if (!token) throw new Error(errors.unauthorized);
-  const response = await fetch(`${WEAR_AUTH_ENDPOINT.replace(/\/$/, '')}/${action}`, {
+  const yandex = endpoint.hostname === 'functions.yandexcloud.net';
+  if (yandex) endpoint.searchParams.set('action', action);
+  else endpoint.pathname = endpoint.pathname.replace(/\/$/, '') + '/' + action;
+  const response = await fetch(endpoint.href, {
     method: 'POST', cache: 'no-store', signal,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    headers: { 'Content-Type': 'application/json', [yandex ? 'X-X20-Authorization' : 'Authorization']: `Bearer ${token}` },
     body: JSON.stringify({ code }),
   });
   const result = await response.json();

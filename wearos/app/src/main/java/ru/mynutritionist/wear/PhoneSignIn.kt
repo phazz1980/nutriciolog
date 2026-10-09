@@ -14,7 +14,10 @@ object PhoneSignIn {
 
     private suspend fun request(action: String, body: JSONObject): JSONObject = withContext(Dispatchers.IO) {
         check(configured) { "Вход с телефона ещё не подключён." }
-        val connection = URL(BuildConfig.WEAR_AUTH_ENDPOINT.trimEnd('/') + "/" + action).openConnection() as HttpURLConnection
+        val base = android.net.Uri.parse(BuildConfig.WEAR_AUTH_ENDPOINT)
+        val address = if (base.host == "functions.yandexcloud.net") base.buildUpon().appendQueryParameter("action", action).build().toString()
+            else BuildConfig.WEAR_AUTH_ENDPOINT.trimEnd('/') + "/" + action
+        val connection = URL(address).openConnection() as HttpURLConnection
         try {
             connection.requestMethod = "POST"
             connection.connectTimeout = 10_000
