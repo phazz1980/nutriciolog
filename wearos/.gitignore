@@ -1,0 +1,7 @@
+# Public Firebase client identifiers are supplied locally for the Android build.
+# They are deliberately not shared between Android app registrations in Git.
+firebase.properties
+.gradle/
+.kotlin/
+local.properties
+google-services.json

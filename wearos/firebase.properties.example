@@ -1,0 +1,10 @@
+# This file contains public Firebase Android client identifiers, not a server secret.
+# Register package ru.mynutritionist.wear in Firebase first, then copy this file to
+# firebase.properties and fill the values from Firebase project settings.
+FIREBASE_APP_ID=1:YOUR_PROJECT_NUMBER:android:YOUR_ANDROID_APP_ID
+FIREBASE_API_KEY=YOUR_ANDROID_API_KEY
+FIREBASE_PROJECT_ID=my-nutritionist-67ce8
+
+# Public HTTPS URL of the separate wear-auth service, set after deployment.
+WEAR_AUTH_ENDPOINT=
+
