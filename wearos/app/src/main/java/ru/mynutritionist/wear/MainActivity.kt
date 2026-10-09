@@ -194,7 +194,7 @@ private fun WaterScreen(current: Int, saving: Boolean, close: () -> Unit, save: 
 private fun AccountScreen(repository: NutritionRepository, close: () -> Unit, phoneSignIn: () -> Unit, signedIn: () -> Unit) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var message by remember { mutableStateOf(if (repository.isConfigured) "Вход по email и паролю" else "Добавьте firebase.properties при сборке") }
+    var message by remember { mutableStateOf(if (repository.isConfigured) "Вход по email и паролю" else repository.configurationMessage) }
     val scope = rememberCoroutineScope()
     ScalingLazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(horizontal = 10.dp)) {
         item { Text("Аккаунт", style = MaterialTheme.typography.title2, color = WearText) }
@@ -256,7 +256,7 @@ private fun PhoneSignInScreen(repository: NutritionRepository, close: (WatchPair
     ScalingLazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(horizontal = 10.dp)) {
         item { Text("Вход с телефона", style = MaterialTheme.typography.title2) }
         pairing?.let { current ->
-            item { Text(current.code.chunked(5).joinToString("-"), style = MaterialTheme.typography.title1) }
+            item { Text(current.code.chunked(4).joinToString("-"), style = MaterialTheme.typography.title1) }
             item { Text("Код действует 5 минут", style = MaterialTheme.typography.caption1) }
         }
         item { Text(message, style = MaterialTheme.typography.body2) }

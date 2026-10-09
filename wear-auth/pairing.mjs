@@ -1,4 +1,4 @@
-import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
+import { randomBytes, randomInt, createHash, timingSafeEqual } from 'node:crypto';
 
 const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -9,7 +9,8 @@ export class PairingError extends Error {
 export function normalizeCode(value) {
   if (typeof value !== 'string' || value.length > 20) throw new PairingError('invalid_code');
   const code = value.replace(/[\s-]/g, '').toUpperCase();
-  if (code.length !== 10 || [...code].some(char => !alphabet.includes(char))) throw new PairingError('invalid_code');
+  // Accept old, unexpired sessions during the client rollout; new codes are digits only.
+  if (!/^\d{8}$/.test(code) && (code.length !== 10 || [...code].some(char => !alphabet.includes(char)))) throw new PairingError('invalid_code');
   return code;
 }
 function validSecret(value) {
@@ -37,7 +38,7 @@ export function createPairingService({ store, verifyIdToken, mintToken, webAppUr
       const time = now();
       // Distributed global cap prevents anonymous session creation from growing unchecked.
       await store.limit('start', 120, time, 60_000);
-      const code = [...randomBytes(10)].map(byte => alphabet[byte % alphabet.length]).join('');
+      const code = String(randomInt(100_000_000)).padStart(8, '0');
       const deviceSecret = randomBytes(32).toString('hex');
       const expiresAt = time + lifetime;
       await store.create(hash(code), { secretHash: hash(deviceSecret), status: 'pending', expiresAt, uid: null, nextPollAt: 0 });

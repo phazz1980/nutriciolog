@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createPairingService, PairingError } from '../pairing.mjs';
+import { createPairingService, PairingError, normalizeCode } from '../pairing.mjs';
 import { createHandler } from '../handler.mjs';
 
 function fixture() {
@@ -34,10 +34,19 @@ function fixture() {
 }
 const errorCode = code => error => error.code === code;
 
+test('numeric codes preserve leading zeros and accept the display separator', () => {
+  assert.equal(normalizeCode('0000-1234'), '00001234');
+  assert.equal(normalizeCode('12345678'), '12345678');
+  assert.equal(normalizeCode('ABCDE23456'), 'ABCDE23456', 'in-flight old sessions remain usable');
+  for (const code of ['1234567', '123456789', '123a5678', 12345678]) {
+    assert.throws(() => normalizeCode(code), errorCode('invalid_code'));
+  }
+});
+
 test('phone approval uses verified UID and watch gets its own session', async () => {
   const { service, records } = fixture();
   const session = await service.start();
-  assert.equal(session.code.length, 10);
+  assert.match(session.code, /^\d{8}$/);
   assert.equal(new URL(session.verificationUrl).hash, `#connect-watch=${session.code}`);
   assert.ok(!JSON.stringify([...records]).includes(session.deviceSecret));
   const inspected = await service.inspect({ code: session.code }, 'user-a');
