@@ -22,8 +22,8 @@ android {
         applicationId = "ru.mynutritionist.wear"
         minSdk = 30
         targetSdk = 37
-        versionCode = 3
-        versionName = "0.2.1"
+        versionCode = 5
+        versionName = "0.2.3"
 
         buildConfigField("String", "FIREBASE_APP_ID", "\"${firebaseValue("FIREBASE_APP_ID")}\"")
         buildConfigField("String", "FIREBASE_API_KEY", "\"${firebaseValue("FIREBASE_API_KEY")}\"")

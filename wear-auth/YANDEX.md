@@ -1,5 +1,9 @@
 # Сервис сопряжения в Yandex Cloud
 
+10.10.2026 активная версия d4e4dnhmeff2fecvmdm6 выдаёт 8 случайных цифр (отображение 1234-5678). Live start/poll с тире/cancel прошли; IAM, Lockbox, CORS и лимиты не менялись.
+
+Обновление 09.10.2026: для телефонного Capacitor APK после отдельного подтверждения пользователя разрешён точный https://localhost наряду с https://nutriciolog-x20.website.yandexcloud.net. Активная версия d4ed4794iq4vs4qrom4q, настройки IAM/Lockbox/логов и масштабирования сохранены. Оба preflight возвращают 204 с точным ACAO; чужой origin — 403. Ниже первая версия развёртывания описана как предыдущий этап.
+
 Сервис развёрнут 09.10.2026: `https://functions.yandexcloud.net/d4e5bfebi143u6kitt0v`, версия `d4e538jobh5uc76a89s8`, Node.js 22, 128 МБ, 30 секунд, публичный вызов подтверждён пользователем. Lockbox подключён, логи выключены, YDB wear_pairing/deleteAt TTL ENABLED. Лимиты на зону: 1 экземпляр, 2 одновременных вызова, без резервирования экземпляров. Проверены реальные start/poll/cancel (pending/cancelled), отказ approve без входа 401, чужой origin 403 и разрешённый OPTIONS 204 с no-store. Подтверждение телефона, подпись custom token и Firebase-вход часов ещё не проверены.
 
 Ниже — инструкция повторного развёртывания. Этот вариант не использует Cloud Run или именованную Firestore-базу; Google Cloud billing для них подключать не нужно. Используются существующий Firebase Auth и отдельные Yandex Cloud Functions + YDB + Lockbox. У Yandex возможны расходы; лимиты не являются месячным денежным бюджетом. Это не обход региональных ограничений.

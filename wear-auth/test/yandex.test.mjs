@@ -62,8 +62,8 @@ test('YDB distributed limits fail closed; creation cannot replace an existing co
 });
 
 test('Yandex query routing, custom app token, base64, CORS and body bound', async () => {
-  const handle = yandexAdapter(createHandler({ inspect: async (payload, token) => { assert.equal(token, 'phone-token'); assert.equal(payload.code, 'ABCDE23456'); return { status: 'pending' }; } }, new Set(['https://example.com'])));
-  const event = { httpMethod: 'POST', queryStringParameters: { action: 'inspect' }, headers: { 'Content-Type': 'application/json', Origin: 'https://example.com', 'X-X20-Authorization': 'Bearer phone-token', Authorization: 'Bearer platform-token' }, isBase64Encoded: true, body: Buffer.from('{"code":"ABCDE23456"}').toString('base64') };
+  const handle = yandexAdapter(createHandler({ inspect: async (payload, token) => { assert.equal(token, 'phone-token'); assert.equal(payload.code, '01234567'); return { status: 'pending' }; } }, new Set(['https://example.com'])));
+  const event = { httpMethod: 'POST', queryStringParameters: { action: 'inspect' }, headers: { 'Content-Type': 'application/json', Origin: 'https://example.com', 'X-X20-Authorization': 'Bearer phone-token', Authorization: 'Bearer platform-token' }, isBase64Encoded: true, body: Buffer.from('{"code":"01234567"}').toString('base64') };
   const response = await handle(event);
   assert.equal(response.statusCode, 200);
   assert.equal(response.headers['cache-control'], 'no-store');

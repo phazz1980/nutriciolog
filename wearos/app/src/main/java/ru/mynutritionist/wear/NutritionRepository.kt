@@ -32,7 +32,8 @@ class NutritionRepository(context: Context) {
     ).all { it.isNotBlank() && !it.contains("YOUR_") }
 
     private val app: FirebaseApp? = if (configured) runCatching {
-        FirebaseApp.initializeApp(
+        FirebaseApp.getApps(context).firstOrNull { it.name == FirebaseApp.DEFAULT_APP_NAME }
+            ?: FirebaseApp.initializeApp(
             context,
             FirebaseOptions.Builder()
                 .setApplicationId(BuildConfig.FIREBASE_APP_ID)
@@ -45,6 +46,9 @@ class NutritionRepository(context: Context) {
     private val auth: FirebaseAuth? get() = app?.let { FirebaseAuth.getInstance(it) }
     private val store: FirebaseFirestore? get() = app?.let { FirebaseFirestore.getInstance(it) }
     val isConfigured: Boolean get() = app != null
+    val configurationMessage: String get() = if (!configured)
+        "Добавьте firebase.properties при сборке"
+    else "Не удалось инициализировать Firebase. Перезапустите приложение."
     val isSignedIn: Boolean get() = auth?.currentUser != null
 
     suspend fun signIn(email: String, password: String) {
