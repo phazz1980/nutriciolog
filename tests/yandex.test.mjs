@@ -10,6 +10,11 @@ test('Yandex: preflight allows Firebase custom header and only allowed origin', 
   assert.equal(result.statusCode, 200);
   assert.equal(result.headers['access-control-allow-origin'], origin);
   assert.match(result.headers['access-control-allow-headers'], /X-X20-Authorization/);
+  const phone = await handler({ httpMethod: 'OPTIONS', headers: { Origin: 'https://localhost' } });
+  assert.equal(phone.headers['access-control-allow-origin'], 'https://localhost');
+  const phoneDenied = await handler({ httpMethod: 'POST', headers: { Origin: 'https://localhost' }, body: '{"action":"usage"}' });
+  assert.equal(phoneDenied.statusCode, 401);
+  assert.equal(phoneDenied.headers['access-control-allow-origin'], 'https://localhost');
   const foreign = await handler({ httpMethod: 'OPTIONS', headers: { Origin: 'https://foreign.example' } });
   assert.notEqual(foreign.headers['access-control-allow-origin'], 'https://foreign.example');
 });
