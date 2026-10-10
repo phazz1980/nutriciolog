@@ -82,10 +82,10 @@ test('Authenticated gateway enforces quotas before provider calls; ignores claim
     if (providerFails) return Response.json({ error: {} }, { status: 500 });
     return Response.json({ choices: [{ message: { content: JSON.stringify({ advice: 'OK', proposedMeal: null }) } }] });
   });
-  function token(uid) {
+  function token(uid, email) {
     const now = Math.floor(Date.now() / 1000);
     const encode = data => Buffer.from(JSON.stringify(data)).toString('base64url');
-    const unsigned = `${encode({ alg: 'RS256', kid: jwk.kid })}.${encode({ sub: uid, aud: 'my-nutritionist-67ce8', iss: 'https://securetoken.google.com/my-nutritionist-67ce8', exp: now + 3600, iat: now, auth_time: now })}`;
+    const unsigned = `${encode({ alg: 'RS256', kid: jwk.kid })}.${encode({ sub: uid, email, aud: 'my-nutritionist-67ce8', iss: 'https://securetoken.google.com/my-nutritionist-67ce8', exp: now + 3600, iat: now, auth_time: now })}`;
     return `${unsigned}.${sign('RSA-SHA256', Buffer.from(unsigned), privateKey).toString('base64url')}`;
   }
   const costRecords = [];
@@ -96,8 +96,8 @@ test('Authenticated gateway enforces quotas before provider calls; ignores claim
     async finishCost(uid, id, nanoUsd, unknown) { Object.assign(costRecords.find(row => row.uid === uid && row.id === id), { nanoUsd, unknown }); },
     async readCosts(uid) { return costRecords.filter(row => row.uid === uid).map(row => ({ ...row, day: row.id.slice(5, 15) })); },
   }, AI_MONTHLY_REQUEST_LIMIT: '2' };
-  const post = (uid, body, config = env) => worker.fetch(new Request('https://gateway/api/advice', {
-    method: 'POST', headers: { Authorization: `Bearer ${token(uid)}`, 'Content-Type': 'application/json', Origin: 'https://nutriciolog-x20.website.yandexcloud.net' }, body: JSON.stringify(body),
+  const post = (uid, body, config = env, email) => worker.fetch(new Request('https://gateway/api/advice', {
+    method: 'POST', headers: { Authorization: `Bearer ${token(uid, email)}`, 'Content-Type': 'application/json', Origin: 'https://nutriciolog-x20.website.yandexcloud.net' }, body: JSON.stringify(body),
   }), config);
   assert.equal((await post('a', { message: '' })).status, 400);
   assert.equal((await (await post('a', { action: 'usage' })).json()).quota.used, 0);
@@ -122,7 +122,12 @@ test('Authenticated gateway enforces quotas before provider calls; ignores claim
   assert.equal(unauthenticated.status, 401);
   assert.equal(costRecords.length, 3);
   assert.ok(costRecords.every(row => row.unknown === 1));
-  const costs = (await (await post('b', { action: 'usage', uid: 'a' })).json()).costs;
+  for (const email of [undefined, 'other@example.com', '340052@gmail.com.other']) {
+    const usage = await (await post('b', { action: 'usage', uid: 'a', email: '340052@gmail.com' }, env, email)).json();
+    assert.equal(Object.hasOwn(usage, 'costs'), false, 'Non-admin cannot request costs by spoofing payload email');
+    assert.equal(usage.quota.used, 1, 'Quota remains available');
+  }
+  const costs = (await (await post('b', { action: 'usage', uid: 'a' }, env, '340052@gmail.com')).json()).costs;
   assert.equal(costs.totals.day.requests, 1, 'Only verified UID costs are returned');
   assert.equal(costs.totals.day.unknown, 1, 'Missing usage on provider failure remains unknown');
   failCostStart = true;

@@ -1,4 +1,4 @@
-export const APP_VERSION = "v0.2.54";
+export const APP_VERSION = "v0.2.55";
 export const RELEASE_DATE = "10 октября 2026";
 
 export const MEAL_TYPES = ["Завтрак", "Обед", "Ужин", "Перекус"];
