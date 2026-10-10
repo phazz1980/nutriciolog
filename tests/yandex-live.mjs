@@ -32,6 +32,16 @@ assert.match(preflight.headers.get('access-control-allow-headers') || '', /x-x20
 const foreign = await request(endpoint, { method: 'OPTIONS', headers: { Origin: 'https://foreign.example' } });
 assert.notEqual(foreign.headers.get('access-control-allow-origin'), '*');
 assert.notEqual(foreign.headers.get('access-control-allow-origin'), 'https://foreign.example');
+const phonePreflight = await request(endpoint, { method: 'OPTIONS', headers: {
+  Origin: 'https://localhost', 'Access-Control-Request-Method': 'POST',
+  'Access-Control-Request-Headers': 'content-type,x-x20-authorization',
+} });
+assert.equal(phonePreflight.headers.get('access-control-allow-origin'), 'https://localhost');
+const phoneDenied = await request(endpoint, { method: 'POST', headers: {
+  Origin: 'https://localhost', 'Content-Type': 'application/json',
+}, body: JSON.stringify({ action: 'usage' }) });
+assert.equal(phoneDenied.status, 401);
+assert.equal(phoneDenied.headers.get('access-control-allow-origin'), 'https://localhost');
 for (const token of [null, 'Bearer invalid']) {
   const response = await request(endpoint, { method: 'POST', headers: {
     Origin: site, 'Content-Type': 'application/json',
