@@ -984,7 +984,6 @@ function setCalculateButton(busy) {
 }
 
 // Количество берём из названия или поля; иначе ИИ предлагает типичную порцию.
-// Подходящий продукт базы пользователь выбирает до расчёта.
 function applyDescriptionPortion() {
   const parsed = parsePortionDescription(element("mealName").value);
   if (!element("portion").value && parsed.amount) {
@@ -1002,11 +1001,6 @@ async function calculateMealNutrition(clarification = "") {
   setAutomaticPortionUnit();
   if (!validateMealEstimate()) return;
   await loadMealSuggestions();
-  if (!savedMealEstimate && matchingProducts(savedMealProducts, element("mealName").value).length) {
-    renderMealSuggestions(savedMealProducts);
-    toast("Выберите подходящий продукт из вашей базы");
-    return;
-  }
   const selectedBase = savedMealEstimate;
   const title = element("mealName").value.trim();
   const originalPortion = element("portion").value;

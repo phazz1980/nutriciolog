@@ -1,5 +1,5 @@
 import { quotaState, refreshQuota, onAiStateChange } from "./ai-client.js";
-import { getAuthStatus } from "./storage.js";
+import { accountDefaults, getAuthStatus } from "./storage.js";
 
 export function initAiQuota() {
   const status = document.getElementById("aiQuotaStatus");
@@ -13,7 +13,9 @@ export function initAiQuota() {
     const auth = getAuthStatus();
     const { quota, costs, error, loading } = quotaState();
     costPanel.replaceChildren();
-    if (auth?.signedIn) {
+    const showCosts = Boolean(auth?.signedIn && accountDefaults().email?.toLowerCase() === "340052@gmail.com");
+    costPanel.hidden = !showCosts;
+    if (showCosts) {
       const heading = document.createElement('h3');
       heading.textContent = 'Расходы ИИ · оценка';
       costPanel.append(heading);

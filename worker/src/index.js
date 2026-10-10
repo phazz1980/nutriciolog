@@ -3,7 +3,7 @@ import { AiResponseFormatError } from "./providers/blackroute.js";
 import { userQuota, QuotaExceededError, QuotaUnavailableError } from "./quota.js";
 import { estimateUsage, readCosts } from './costs.js';
 
-const WORKER_VERSION = "0.1.20";
+const WORKER_VERSION = "0.1.21";
 
 const ALLOWED_ORIGINS = new Set([
   "https://nutriciolog.pages.dev",
@@ -51,7 +51,12 @@ export default {
         return json({ error: "Тело запроса должно быть корректным JSON." }, 400, request);
       }
       if (!payload || typeof payload !== "object" || Array.isArray(payload)) return json({ error: "Тело запроса должно быть объектом." }, 400, request);
-      if (payload.action === "usage") return json({ quota: await userQuota(env, claims.sub), costs: await readCosts(env, claims.sub) }, 200, request);
+      if (payload.action === "usage") {
+        const usage = { quota: await userQuota(env, claims.sub) };
+        // Authorization comes only from the verified Firebase token, never the request body.
+        if (claims.email?.toLowerCase() === MODEL_SELECTOR_EMAIL) usage.costs = await readCosts(env, claims.sub);
+        return json(usage, 200, request);
+      }
       if (payload.action !== undefined) return json({ error: "Неизвестное действие." }, 400, request);
       const { message, image = null, model = null } = payload;
       if (typeof message !== "string" || !message.trim() || message.length > MAX_MESSAGE_LENGTH) {
