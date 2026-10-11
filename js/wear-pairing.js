@@ -108,6 +108,7 @@ function openPairing(initialCode = '') {
   input.focus();
 }
 
+
 const button = document.createElement('button');
 button.type = 'button';
 button.className = 'secondary';

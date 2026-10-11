@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Мой нутрициолог</string>
+    <string name="title_activity_main">Мой нутрициолог</string>
+    <string name="package_name">ru.phazz.nutriciolog</string>
+    <string name="custom_url_scheme">ru.phazz.nutriciolog</string>
+</resources>
