@@ -1,6 +1,7 @@
 import { todayKey } from "./date.js";
 import { accountDefaults, call, onAuthChanged, onStoreReady } from "./storage.js";
 import { askAi } from "./ai-client.js";
+import { activeAnnouncement, refreshAnnouncement } from "./ai-announcement.js";
 
 export function menuAdviceMessage(entries) {
   const menu = (entries || []).map(entry => ({
@@ -33,7 +34,34 @@ export function initDailyAdvice() {
   const retry = document.getElementById("retryDailyAdvice");
   if (!card || !text) return;
   let active = "", pending = "", completed = "";
+  const heading = card.querySelector("h2");
+  const label = card.querySelector(".daily-advice-label");
+  const footer = card.querySelector(".daily-advice-footer");
+  const originalHeading = heading?.textContent;
+  const originalLabel = label?.textContent;
+  let noticeShown = false;
+  const showNotice = () => {
+    const notice = activeAnnouncement();
+    if (notice) {
+      noticeShown = true; card.hidden = false;
+      text.textContent = notice.message;
+      if (heading) heading.textContent = notice.title;
+      if (label) label.textContent = "Объявление";
+      if (footer) footer.hidden = true;
+      if (retry) retry.hidden = true;
+      return true;
+    }
+    if (noticeShown) {
+      noticeShown = false; completed = ""; card.hidden = true;
+      if (heading) heading.textContent = originalHeading;
+      if (label) label.textContent = originalLabel;
+      if (footer) footer.hidden = false;
+    }
+    return false;
+  };
   const refresh = async () => {
+    await refreshAnnouncement();
+    if (showNotice()) return;
     const uid = accountDefaults().uid;
     const date = todayKey();
     const key = uid ? `my-nutritionist:account:${uid}:daily-advice:${date}` : "";
@@ -46,14 +74,17 @@ export function initDailyAdvice() {
       try { saved = JSON.parse(localStorage.getItem(key) || "null"); } catch {}
       if (saved?.advice) { text.textContent = saved.advice; card.hidden = false; }
       const entries = await call("loadDiaryEntries", date);
+      if (showNotice()) return;
       if (accountDefaults().uid !== uid || todayKey() !== date) return;
       const bytes = new TextEncoder().encode(menuAdviceMessage(entries));
       const digest = await crypto.subtle.digest('SHA-256', bytes);
+      if (showNotice()) return;
       const fingerprint = Array.from(new Uint8Array(digest), n => n.toString(16).padStart(2, '0')).join('');
       if (accountDefaults().uid !== uid || todayKey() !== date || active !== key) return;
       if (saved?.advice && saved.fingerprint === fingerprint) { completed = key; return; }
       card.hidden = false; text.textContent = "Готовим короткий совет по сегодняшнему меню…";
       const result = await askAi({ message: dailyAdvicePrompt(entries || []) });
+      if (showNotice()) return;
       if (accountDefaults().uid !== uid || todayKey() !== date || active !== key) return;
       const advice = result.status === "ok" && typeof result.data?.advice === "string" ? result.data.advice.trim().slice(0, 1600) : "";
       if (!advice) throw new Error("Advice unavailable");
@@ -61,6 +92,7 @@ export function initDailyAdvice() {
       try { localStorage.setItem(key, JSON.stringify({ advice, fingerprint })); } catch {}
       text.textContent = advice;
     } catch {
+      if (showNotice()) return;
       if (active === key && accountDefaults().uid === uid) {
         card.hidden = false; text.textContent = "Совет сейчас недоступен. Задать вопрос можно на экране «Совет».";
         if (retry) retry.hidden = false;
@@ -71,5 +103,7 @@ export function initDailyAdvice() {
   if (retry) retry.onclick = run;
   onAuthChanged(run); onStoreReady(run);
   window.addEventListener("online", run);
+  window.addEventListener("focus", run);
+  window.setInterval(run, 60_000);
   run();
 }
