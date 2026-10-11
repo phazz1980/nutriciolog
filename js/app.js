@@ -4,7 +4,7 @@ import { hasStore, has, call, loadProfile as loadStoredProfile, accountDefaults,
 import { toast, setText, showScreen, openModal, closeModal, openDialog, showAiDiagnostic, removeAiDiagnostic, setAiDebug, clearAiDebug, showCalculationResult } from "./ui.js";
 import { askAi, getAiToken, requestAiAdvice, clearErrors, clearServiceError, availability } from "./ai-client.js";
 import { initAiAvailability } from "./ai-availability.js";
-import { initDailyAdvice } from "./daily-advice.js?release=v0.4.0";
+import { initDailyAdvice } from "./daily-advice.js?release=v0.4.1";
 import { initAiQuota } from "./ai-quota.js";
 import { initHealthConnect, getHealthWeight } from "./health-connect.js";
 import "./wear-pairing.js";
@@ -504,7 +504,7 @@ function renderProfile() {
   setText("profileGoal", currentProfile.goal);
   setText("profileRate", `Цель: ${formatNumber(currentProfile.targetWeight)} кг`);
   setText("profileCalories", `${formatNumber(currentProfile.calories)} ккал`);
-  setText("releaseInfo", `Версия ${APP_VERSION} · ${RELEASE_DATE}`);
+  setText("releaseInfo", `Версия ${APP_VERSION}`);
   renderNutrition();
   renderPlan();
 }

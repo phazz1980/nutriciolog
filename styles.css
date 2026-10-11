@@ -210,3 +210,38 @@ button.meal-photo-action:not(:disabled):hover,button.meal-photo-action:not(:disa
 button.meal-calculate-action:not(:disabled){color:#fff;background-color:#4d55b8;box-shadow:0 3px 9px #514db34d;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m12 3-1.4 5.6L5 10l5.6 1.4L12 17l1.4-5.6L19 10l-5.6-1.4z'/%3E%3C/svg%3E"),linear-gradient(135deg,#cf5cce,#7458ce);background-size:20px,100% 100%;background-position:center,center;background-repeat:no-repeat}
 button.meal-calculate-action:not(:disabled):hover,button.meal-calculate-action:not(:disabled):focus-visible { transform:translateY(-1px); filter:saturate(1.15) brightness(1.06); }
 #authPanel #emailRegister, #authPanel #passwordReset { display:block; width:100%; margin:12px auto 0; padding:8px 12px; text-align:center; text-decoration:underline; text-underline-offset:3px; }
+#profile .card.profile { flex-wrap:wrap; row-gap:0; }
+#profile .card.profile > .avatar { flex-shrink:0; }
+#profile .card.profile > div:not(.avatar) { min-width:0; flex:1; overflow-wrap:anywhere; }
+#profile .profile-account { flex:0 0 100%; min-width:0; margin-top:10px; padding-top:6px; border-top:1px solid var(--line); }
+.account-row { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.account-row .hello { min-width:0; font-size:12px; overflow-wrap:anywhere; }
+#authPanel.profile-account #signOutButton { display:block; flex:0 0 auto; margin:0; padding:8px 0 8px 10px; font-size:12px; }
+#firebaseStatus[hidden] { display:none; }
+
+/* Device-local appearance; shared by Web and the Android bundle. */
+.theme-settings .setting{gap:12px;flex-wrap:wrap;padding:2px 0}
+#themePreference{max-width:100%;min-height:44px;padding:8px 10px;border:1px solid var(--line);border-radius:12px;background:var(--paper);color:var(--ink);font-size:16px}
+:root[data-theme="dark"]{--green:#72d6ac;--mint:#203d31;--orange:#ffb275;--ink:#e4f0e9;--muted:#a4b9ad;--line:#34483e;--paper:#14231e}
+[data-theme="dark"] body{background:#0c1713}
+[data-theme="dark"] .card,[data-theme="dark"] .bottom,[data-theme="dark"] .sheet,[data-theme="dark"] .auth-mark{background:#1b2e25}
+[data-theme="dark"] .macro div,[data-theme="dark"] .ai-costs-grid div,[data-theme="dark"] .ai-response-diagnostic pre{background:#20372c}
+[data-theme="dark"] input,[data-theme="dark"] select{background:var(--paper);color:var(--ink)}
+[data-theme="dark"] input::placeholder{color:var(--muted);opacity:1}
+[data-theme="dark"] .primary,[data-theme="dark"] .send,[data-theme="dark"] .bubble.user,[data-theme="dark"] .drop.full{background:#277c58;color:#fff}
+[data-theme="dark"] .goal{background:linear-gradient(135deg,#19553e,#267550);color:#fff}
+[data-theme="dark"] .bar,[data-theme="dark"] .steps-progress,[data-theme="dark"] .meal-ai-progress{background:#344e40}
+[data-theme="dark"] .drop{background:#284637;color:#a2d6be}
+[data-theme="dark"] .tag,[data-theme="dark"] .notice,[data-theme="dark"] .auth-status[data-error="true"],[data-theme="dark"] .status.ai-service-warning{background:#3b3020;color:#f0c88b;border-color:#685438}
+[data-theme="dark"] #authRequiredDialog .auth-sheet{background:linear-gradient(160deg,var(--mint),#1b2e25 48%);border-color:var(--line)}
+[data-theme="dark"] .auth-description,[data-theme="dark"] .auth-status{color:var(--ink)}
+[data-theme="dark"] .daily-advice,[data-theme="dark"] .meal-ai-timeline,[data-theme="dark"] .activity-card{background:linear-gradient(135deg,#203d31,#1b3027);border-color:var(--line)}
+[data-theme="dark"] .daily-advice h2,[data-theme="dark"] .daily-advice p{color:var(--ink)}
+[data-theme="dark"] .daily-advice-label,[data-theme="dark"] .daily-advice small,[data-theme="dark"] .ai-costs small{color:var(--muted)}
+[data-theme="dark"] .daily-advice-icon{background:#2b4f3c;color:var(--green)}
+[data-theme="dark"] .daily-advice-footer,[data-theme="dark"] .health-burned{border-color:var(--line)}
+[data-theme="dark"] .field-error,[data-theme="dark"] button.meal-suggestion-delete{color:#ffaaaa}
+[data-theme="dark"] .field input[aria-invalid="true"],[data-theme="dark"] .field input[aria-invalid="true"]::placeholder{border-color:#ffaaaa;color:#ffaaaa}
+[data-theme="dark"] button.meal-suggestion-delete:hover,[data-theme="dark"] button.meal-suggestion-delete:focus-visible{background:#502b2b}
+[data-theme="dark"] .nav[data-nav="assistant"] span{color:var(--green)}
+[data-theme="dark"] .toast{background:#dcece2;color:#14231e}
