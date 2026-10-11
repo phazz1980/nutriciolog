@@ -6,6 +6,8 @@ import { askAi, getAiToken, requestAiAdvice, clearErrors, clearServiceError, ava
 import { initAiAvailability } from "./ai-availability.js";
 import { initDailyAdvice } from "./daily-advice.js?release=v0.3.12";
 import { initAiQuota } from "./ai-quota.js";
+import { initHealthConnect, getHealthWeight } from "./health-connect.js";
+import "./wear-pairing.js";
 import { createMealTimeline } from "./timeline.js";
 import { preparePhoto, openPhotoPicker } from "./photo-picker.js";
 import { showPhotoRecognitionDialog, parseMealEstimate, fillMealForm, setFormNutrition, clearFormNutrition, readFormNutrition, toastPhotoTransfer } from "./photo.js";
@@ -671,7 +673,18 @@ function addWeight() {
   const form = dialog.querySelector("form");
   const [dateInput, weightInput] = form.querySelectorAll("input");
   dateInput.value = todayKey();
-  weightInput.value = Number(currentProfile?.weight) || "";
+  const latestEntry = [...weightHistory]
+    .filter(entry => entry?.date && Number.isFinite(Number(entry.weight)))
+    .sort((left, right) => String(left.date).localeCompare(String(right.date)))
+    .at(-1);
+  weightInput.value = Number(latestEntry?.weight ?? currentProfile?.weight) || "";
+  let weightEdited = false;
+  weightInput.addEventListener("input", () => { weightEdited = true; });
+  const formAccount = accountDefaults().uid;
+  getHealthWeight().then(healthWeight => {
+    if (!form.isConnected || weightEdited || accountDefaults().uid !== formAccount || !healthWeight) return;
+    if (!latestEntry || healthWeight.date >= latestEntry.date) weightInput.value = healthWeight.weight;
+  }).catch(() => {});
   dialog.querySelector("[data-close]").onclick = close;
   form.onsubmit = async event => {
     event.preventDefault();
@@ -801,7 +814,7 @@ function saveMeal(event) {
   persist("saveDiaryEntry", stored);
   const clarification = lastNutritionClarification;
   const hasClarification = clarification?.title === normalizeTitle(entry.title);
-  persist("saveProduct", {
+  const savedProduct = {
     title: entry.title,
     portion: entry.portion,
     unitWeight: entry.unitWeight,
@@ -810,7 +823,15 @@ function saveMeal(event) {
     fat: entry.fat,
     carbs: entry.carbs,
     ...(hasClarification ? { aiClarification: { question: clarification.question, additionalIngredients: clarification.additionalIngredients } } : {}),
-  });
+  };
+  persist("saveProduct", savedProduct);
+  // Не ждём повторной загрузки страницы: новая позиция должна появиться в
+  // личной базе и подсказках уже при следующем вводе названия.
+  const savedTitle = normalizeTitle(savedProduct.title);
+  savedMealProducts = savedMealProducts
+    .filter(product => normalizeTitle(product.title) !== savedTitle)
+    .concat(savedProduct);
+  renderMealSuggestions(savedMealProducts);
   closeMeal();
   event.target.reset();
   lastCalculatedUnitWeight = null;
@@ -1656,8 +1677,8 @@ function initPhotoInputs() {
   const manualButton = element("manualPhotoButton");
   const adviceInput = element("mealPhoto");
   const manualInput = element("manualMealPhoto");
-  adviceButton.onclick = () => openPhotoPicker(adviceButton, adviceInput);
-  manualButton.onclick = () => openPhotoPicker(manualButton, manualInput);
+  adviceButton.onclick = () => openPhotoPicker(adviceButton, adviceInput, { onNativeCameraPhoto: selectPhoto });
+  manualButton.onclick = () => openPhotoPicker(manualButton, manualInput, { onNativeCameraPhoto: recognizeMealPhoto });
   adviceInput.addEventListener("change", () => selectPhoto(adviceInput.files[0]));
   manualInput.addEventListener("change", () => {
     const file = manualInput.files[0];
@@ -1762,6 +1783,7 @@ function boot() {
   initAiAvailability();
   initAiQuota();
   initDailyAdvice();
+  initHealthConnect();
 
   // Хранилище создаётся модулем firebase-client.js до этого модуля, поэтому
   // начальная загрузка запускается напрямую, а события обслуживают обновления.

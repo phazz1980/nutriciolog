@@ -8,6 +8,7 @@ const WORKER_VERSION = "0.1.23";
 const ALLOWED_ORIGINS = new Set([
   "https://nutriciolog.pages.dev",
   "https://nutriciolog-x20.website.yandexcloud.net",
+  // Capacitor Android serves the bundled client from this fixed local HTTPS origin.
   "https://localhost",
 ]);
 
@@ -148,7 +149,7 @@ let firebaseJwks = { expiresAt: 0, keys: {} };
 class AccessError extends Error {}
 
 async function verifyFirebaseToken(authorization) {
-  if (!authorization?.startsWith("Bearer ")) throw new AccessError("Войдите через Google, чтобы воспользоваться ИИ.");
+  if (!authorization?.startsWith("Bearer ")) throw new AccessError("Войдите в аккаунт, чтобы воспользоваться ИИ.");
   const [encodedHeader, encodedPayload, encodedSignature] = authorization.slice(7).split(".");
   if (!encodedHeader || !encodedPayload || !encodedSignature) throw new AccessError("Недействительный токен входа.");
   const header = decodeJwtPart(encodedHeader);

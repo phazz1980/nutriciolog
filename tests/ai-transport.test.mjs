@@ -70,16 +70,16 @@ test("unexpected code errors do not cause extra paid calls", async () => {
   await assert.rejects(fetchAi(options, { fetcher: async () => { calls++; throw new Error("bug"); } }));
   assert.equal(calls, 1);
 });
-test("phone and website ship identical transport and clients", async t => {
-  const phoneRoot = process.env.PHONE_SOURCE_ROOT || "C:/Users/fotne/.codex/worktrees/5f26/nutriciolog";
-  try { await readFile(phoneRoot + "/js/ai-client.js"); }
+test("Android bundle and website share transport and clients", async t => {
+  const bundleRoot = new URL('../www/', import.meta.url);
+  try { await readFile(new URL('js/ai-client.js', bundleRoot)); }
   catch (error) {
     if (error.code !== "ENOENT") throw error;
-    t.skip("Set PHONE_SOURCE_ROOT to the separate phone checkout");
+    t.skip("Run npm run build:android-web to check the generated Android bundle");
     return;
   }
   for (const file of ["ai-transport.js", "ai-client.js"]) {
     assert.equal(await readFile(new URL("../js/" + file, import.meta.url), "utf8"),
-      await readFile(phoneRoot + "/js/" + file, "utf8"));
+      await readFile(new URL('js/' + file, bundleRoot), "utf8"));
   }
 });

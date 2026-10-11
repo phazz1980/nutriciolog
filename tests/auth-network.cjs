@@ -13,16 +13,11 @@ import {registry} from './firebase-app.js';
 export const getAuth=app=>{if(app.registry!==registry)throw new Error('Duplicate Firebase app registry');return {}};
 export const browserLocalPersistence={};
 export const setPersistence=()=>Promise.resolve();
-export class GoogleAuthProvider {}
 export function onAuthStateChanged(auth, next){
   // Firebase always delivers providerData; mirror it so the app sees a realistic user.
   window.test.setUser=user=>next(window.test.prepareUser?window.test.prepareUser(user):user);
   if(!window.test.delaySession)queueMicrotask(()=>next(window.test.user));
   return ()=>{};
-}
-export function signInWithPopup(){
-  window.test.popupCalls++;
-  return new Promise((resolve,reject)=>{window.test.finishLogin=resolve;window.test.failLogin=reject});
 }
 export const signOut=()=>{window.test.setUser(null);return Promise.resolve()};
 export const signInWithEmailAndPassword=()=>{};
@@ -86,6 +81,8 @@ export const serverTimestamp=()=>0;
       });
       // Accelerate only application auth timers; the Firebase response remains manually controlled.
       await page.route('**/firebase-client.js', route => route.fulfill({ contentType: 'text/javascript', body: source.replace('const AUTH_WAIT_MS = 15000;', 'const AUTH_WAIT_MS = 200;') }));
+      // Auth/advice tests must not depend on the live public outage announcement.
+      await page.route('**/ai-status.json*', route => route.fulfill({json:{enabled:false}}));
       await page.goto(origin, { timeout: 30000 });
       await page.waitForFunction(() => Boolean(window.nutritionStore));
       return { page, errors, context, recover: () => { failImports = false; } };
@@ -129,24 +126,15 @@ export const serverTimestamp=()=>0;
       await page.waitForFunction(() => window.getFirebaseAuthStatus?.().state === 'ready');
     });
 
-    await check('Popup is single-flight; a network failure is actionable and retry succeeds', {}, async ({ page }) => {
+    await check('Auth dialog leads to email sign-in form and preserves the meal draft', {}, async ({ page }) => {
       await page.waitForFunction(() => window.getFirebaseAuthStatus().state === 'ready');
-      await page.evaluate(() => {openMeal();window.showAuthRequiredDialog()});
+      await page.evaluate(() => { openMeal(); mealName.value = 'Salad'; portion.value = '200'; window.showAuthRequiredDialog(); });
       if(process.env.AUTH_SCREENSHOT)await page.screenshot({path:process.env.AUTH_SCREENSHOT});
-      await page.keyboard.press('Escape');
-      assert.equal(await page.locator('#authRequiredDialog').count(),0);
-      await page.evaluate(() => { window.showAuthRequiredDialog(); document.querySelector('#authRequiredDialog .primary').click(); window.firebaseSignInWithGoogle().catch(()=>{}); });
-      assert.equal(await page.evaluate(() => window.test.popupCalls), 1);
-      assert.equal(await page.locator('#authRequiredDialog .primary').isDisabled(), true);
-      await page.waitForFunction(() => window.getFirebaseAuthStatus().message.includes('больше времени'));
-      assert.match(await page.locator('#authRequiredDialog [role=status]').textContent(), /больше времени/);
-      await page.evaluate(() => window.test.failLogin({ code: 'auth/network-request-failed' }));
-      await page.waitForFunction(() => !window.getFirebaseAuthStatus().pending);
-      assert.match(await page.locator('#authRequiredDialog [role=status]').textContent(), /Проверьте интернет/);
       await page.locator('#authRequiredDialog .primary').click();
-      await page.evaluate(() => { window.test.setUser({ uid: 'account', getIdToken: async () => 'test-token' }); window.test.finishLogin({}); });
       await page.waitForFunction(() => !document.getElementById('authRequiredDialog'));
-      assert.equal(await page.evaluate(() => window.test.popupCalls), 2);
+      assert.equal(await page.locator('#profile.active').count(), 1);
+      assert.equal(await page.locator('#mealName').inputValue(), 'Salad');
+      assert.equal(await page.locator('#portion').inputValue(), '200');
     });
 
     await check('A delayed token or SDK error does not open the signed-out dialog', {}, async ({ page }) => {
@@ -158,19 +146,6 @@ export const serverTimestamp=()=>0;
       await page.evaluate(() => window.calculateMealNutrition());
       assert.equal(await page.locator('#authRequiredDialog').count(), 0);
       assert.equal(await page.evaluate(() => window.test.writes.length), 0);
-    });
-
-    await check('Popup blocked/closed errors retain the form and allow another attempt', {}, async ({ page }) => {
-      await page.waitForFunction(() => window.getFirebaseAuthStatus().state === 'ready');
-      await page.evaluate(() => { mealName.value='Salad'; portion.value='200'; window.showAuthRequiredDialog(); });
-      for (const code of ['auth/popup-blocked', 'auth/popup-closed-by-user']) {
-        await page.locator('#authRequiredDialog .primary').click();
-        await page.evaluate(code => window.test.failLogin({ code }), code);
-        await page.waitForFunction(() => !window.getFirebaseAuthStatus().pending);
-        assert.match(await page.locator('#authRequiredDialog [role=status]').textContent(), /Safari\/Chrome/);
-        assert.equal(await page.locator('#mealName').inputValue(), 'Salad');
-        assert.equal(await page.locator('#portion').inputValue(), '200');
-      }
     });
 
     await check('Cached profile renders before Firestore and refreshes in the background', { holdProfile: true }, async ({ page }) => {
@@ -291,6 +266,8 @@ export const serverTimestamp=()=>0;
       await page.waitForFunction(() => !document.getElementById('calculateMealButton').classList.contains('ai-unavailable'));
       let status=502;
       await page.route('https://functions.yandexcloud.net/d4evergfv4q48plpsdbu',route=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(status===200?{advice:'OK',proposedMeal:null}:{error:'Unavailable'}),headers:{'Access-Control-Allow-Origin':'*'}}));
+      // A 5xx is also retried through the reserve; simulate that gateway too.
+      await page.route('https://my-nutritionist-advice.340052.workers.dev',route=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(status===200?{advice:'OK',proposedMeal:null}:{error:'Unavailable'}),headers:{'Access-Control-Allow-Origin':'*'}}));
       await page.evaluate(() => requestAiAdvice({method:'POST'}));
       assert.match(await button.getAttribute('class'), /ai-unavailable/);
       assert.match(await page.locator('#aiMealAvailabilityStatus').textContent(), /временно недоступен/);
@@ -373,7 +350,6 @@ export const serverTimestamp=()=>0;
       await page.evaluate(() => window.test.setUser({uid:'portion-user',getIdToken:async()=> 'test-token'}));
       await page.locator('#todayAddMealButton').click();
       await page.locator('#mealName').fill('50гр сыра');
-      await page.locator('#calculateMealButton').click();
       await page.locator('.meal-suggestion', {hasText:'Сыр российский'}).click();
       assert.equal(await page.locator('#portion').inputValue(), '50');
       assert.equal(await page.locator('#portionUnit').inputValue(), 'г');
@@ -389,7 +365,6 @@ export const serverTimestamp=()=>0;
       await page.evaluate(() => window.test.setUser({uid:'piece-user',getIdToken:async()=> 'test-token'}));
       await page.locator('#todayAddMealButton').click();
       await page.locator('#mealName').fill('2 яйца');
-      await page.locator('#calculateMealButton').click();
       await page.locator('.meal-suggestion', {hasText:'Яйцо варёное'}).click();
       assert.equal(await page.locator('#portion').inputValue(),'2');
       assert.equal(await page.locator('#portionUnit').inputValue(),'шт.');
@@ -409,7 +384,6 @@ export const serverTimestamp=()=>0;
       await page.evaluate(()=>window.test.setUser({uid:'egg-input',getIdToken:async()=> 'test-token'}));
       await page.locator('#todayAddMealButton').click();
       await page.locator('#mealName').fill('Яйцо');
-      await page.locator('#calculateMealButton').click();
       await page.locator('.meal-suggestion',{hasText:'Яйцо варёное'}).click();
       await page.locator('#portion').fill('2');
       assert.equal(await page.locator('#portionUnit').inputValue(),'шт.');
@@ -456,8 +430,9 @@ export const serverTimestamp=()=>0;
       await page.waitForFunction(()=>document.getElementById('dailyAdviceText').textContent.includes('Добавьте овощи'));
       await page.waitForTimeout(200);
       assert.equal(posts,1,'Unchanged menu is not sent after reload');
+      await page.evaluate(()=>window.test.setUser(null));
+      await page.locator('#dailyAdvice').waitFor({state:'hidden'});
       await page.evaluate(()=>{
-        window.test.setUser(null);
         window.nutritionStore.loadDiaryEntries=async()=>[{title:'Яйцо',portion:2,portionUnit:'шт.',calories:150,protein:13,fat:10,carbs:1,mealType:'Завтрак'}];
         window.test.setUser({uid:'advice-user',getIdToken:async()=> 'test-token'});
       });
@@ -465,11 +440,12 @@ export const serverTimestamp=()=>0;
       while(posts<2 && Date.now()<changedDeadline) await new Promise(resolve=>setTimeout(resolve,50));
       assert.equal(posts,2,'Changed menu receives a new advice request');
       await page.evaluate(()=>window.test.setUser(null));
-      assert.equal(await page.locator('#dailyAdvice').isHidden(),true);
+      await page.locator('#dailyAdvice').waitFor({state:'hidden'});
     });
 
     await check('Daily advice bounds a full diary and retries after a failed load', {}, async ({page}) => {
       let posts=0;
+      await page.route('https://my-nutritionist-advice.340052.workers.dev', route=>route.fulfill({status:503,json:{error:'Unavailable'}}));
       await page.route('https://functions.yandexcloud.net/**', async route => {
         const body=route.request().postDataJSON();
         if(body.action==='usage') return route.fulfill({json:{}});
@@ -496,7 +472,8 @@ export const serverTimestamp=()=>0;
         const resetsAt=new Date(Date.UTC(new Date().getUTCFullYear(),new Date().getUTCMonth()+1,1)).toISOString();
         await route.fulfill({json:{quota:{unit:'requests',used:2,limit:1000,remaining:998,period,resetsAt},costs:{status:'ok',currency:'USD',totals:{day:{nanoUsd:422020,requests:1,unknown:0},week:{nanoUsd:21190770,requests:2,unknown:1},month:{nanoUsd:21190770,requests:2,unknown:1}}}}});
       });
-      await page.evaluate(()=>window.test.setUser({uid:'cost-user',getIdToken:async()=> 'test-token'}));
+      const costOwnerEmail=fs.readFileSync(path.join(root,'js/ai-quota.js'),'utf8').match(/email\?\.toLowerCase\(\) === "([^"]+)"/)[1];
+      await page.evaluate(email=>window.test.setUser({uid:'cost-user',email,getIdToken:async()=> 'test-token'}),costOwnerEmail);
       await page.locator('[data-nav="profile"]').first().click();
       await page.waitForFunction(()=>document.getElementById('aiCosts').textContent.includes('$0.000422'));
       assert.match(await page.locator('#aiCosts').innerText(),/Сумма неполная/);
