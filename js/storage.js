@@ -43,9 +43,6 @@ export function getFirebaseIdToken() {
   return window.getFirebaseIdToken;
 }
 
-export function signInWithGoogle() {
-  return window.firebaseSignInWithGoogle;
-}
 
 export function onAuthChanged(handler) {
   window.addEventListener("nutrition-auth-changed", handler);

@@ -113,7 +113,18 @@ button.type = 'button';
 button.className = 'secondary';
 button.textContent = 'Подключить часы';
 button.onclick = () => openPairing();
-document.getElementById('profileDocuments')?.before(button);
+const card = document.createElement('section');
+card.className = 'card watch-pairing-card';
+card.setAttribute('aria-labelledby', 'watchPairingCardTitle');
+const heading = document.createElement('h2');
+heading.id = 'watchPairingCardTitle';
+heading.textContent = 'Часы на Wear OS';
+const description = document.createElement('p');
+description.id = 'watchPairingDescription';
+description.textContent = 'Для часов на Wear OS с приложением «Мой нутрициолог». На часах выберите «Войти с телефона», затем введите здесь код с их экрана.';
+button.setAttribute('aria-describedby', description.id);
+card.append(heading, description, button);
+document.getElementById('profileDocuments')?.before(card);
 function openFromHash() {
   const match = location.hash.match(/^#connect-watch=(\d{4}-?\d{4})$/);
   if (match) { history.replaceState(null, '', location.pathname + location.search); openPairing(match[1].replace('-', '')); }
