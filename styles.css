@@ -1,4 +1,5 @@
 :root{--green:#2d9b72;--mint:#e9f7f0;--orange:#ef8b47;--ink:#18332b;--muted:#748780;--line:#e7eee9;--paper:#fff}
+.daily-advice-footer[hidden]{display:none}
 /* Keep the calorie amount and unit together; let long meal names wrap instead. */
 .entry > :first-child{min-width:0;overflow-wrap:anywhere}
 .entry > .meal-calories{white-space:nowrap;flex-shrink:0}

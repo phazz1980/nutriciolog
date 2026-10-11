@@ -3,9 +3,26 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 import { webcrypto } from "node:crypto";
-import { validateAnnouncement } from "../js/ai-announcement.js";
+import { validateAnnouncement, refreshAnnouncement } from "../js/ai-announcement.js";
 
 const notice = { enabled: true, title: "ИИ недоступен", message: "<img src=x> Только текст.", expiresAt: "2099-01-01T00:00:00Z" };
+test("configuration falls back to website without auth or persistence", async () => {
+  const original = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, options) => {
+    calls.push(url);
+    assert.equal(options.credentials, "omit");
+    assert.equal(options.cache, "no-store");
+    assert.equal(options.headers, undefined);
+    if (calls.length === 1) throw new TypeError("source unavailable");
+    assert.ok(url.includes("/ai-status.json?minute="));
+    return Response.json(notice);
+  };
+  try {
+    assert.equal((await refreshAnnouncement()).title, notice.title);
+    assert.equal(calls.length, 2);
+  } finally { globalThis.fetch = original; }
+});
 test("notice rejects disabled, expired, incomplete and oversized configuration", () => {
   assert.equal(validateAnnouncement(notice).message, notice.message);
   for (const value of [null, {}, { ...notice, enabled: false }, { ...notice, expiresAt: "bad" },
