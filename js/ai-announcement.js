@@ -38,6 +38,7 @@ export async function refreshAnnouncement() {
       if (!received) throw new Error("Status unavailable");
     } catch { /* Keep only an unexpired previously received public notice. */ }
     checkedAt = Date.now();
+    console.info("[Объявление]", activeAnnouncement() ? "active" : "off");
     return activeAnnouncement();
   })();
   try { return await pending; } finally { pending = null; }
