@@ -21,13 +21,21 @@ export async function refreshAnnouncement() {
   pending = (async () => {
     // Public control file outside the AI gateway; never sends auth, menu or UID.
     try {
-      const response = await fetch(SOURCE + "?minute=" + Math.floor(Date.now() / 60_000), {
-        cache: "no-store", credentials: "omit", redirect: "error", signal: AbortSignal.timeout(4_000),
-      });
-      if (!response.ok) throw new Error("Status unavailable");
-      const text = await response.text();
-      if (text.length > 4096) throw new Error("Status too large");
-      current = validateAnnouncement(JSON.parse(text));
+      let received = false;
+      for (const source of [SOURCE, new URL("../ai-status.json", import.meta.url).href]) {
+        try {
+          const response = await fetch(source + "?minute=" + Math.floor(Date.now() / 60_000), {
+            cache: "no-store", credentials: "omit", redirect: "error", signal: AbortSignal.timeout(4_000),
+          });
+          if (!response.ok) throw new Error("Status unavailable");
+          const text = await response.text();
+          if (text.length > 4096) throw new Error("Status too large");
+          current = validateAnnouncement(JSON.parse(text));
+          received = true;
+          break;
+        } catch { /* Try the same public configuration on the website itself. */ }
+      }
+      if (!received) throw new Error("Status unavailable");
     } catch { /* Keep only an unexpired previously received public notice. */ }
     checkedAt = Date.now();
     return activeAnnouncement();
