@@ -1,7 +1,7 @@
 import { todayKey } from "./date.js";
 import { accountDefaults, call, onAuthChanged, onStoreReady } from "./storage.js";
 import { askAi } from "./ai-client.js";
-import { activeAnnouncement, refreshAnnouncement } from "./ai-announcement.js?release=v0.4.0";
+import { activeAnnouncement, refreshAnnouncement } from "./ai-announcement.js?release=v0.4.1";
 
 export function menuAdviceMessage(entries) {
   const menu = (entries || []).map(entry => ({

@@ -418,7 +418,10 @@ function updateStatus() {
   }
   const pending = user ? pendingWrites(user.uid).length : 0;
   const blocked = user ? pendingWrites(user.uid).filter(item => item.blocked).length : 0;
-  if (element) element.textContent = !configured ? "Локальный режим: Firebase пока не подключён" : user ? (pending ? `Синхронизация: ожидают отправки ${pending} изм.` : `Синхронизация: ${user.email || "аккаунт подключён"}`) : guestMode ? "Гостевой режим: данные сохраняются на этом устройстве" : authState === "loading" ? "Подключаемся и восстанавливаем вход…" : authState === "error" ? "Сервис входа недоступен" : "Войдите, чтобы синхронизировать данные";
+  if (element) {
+    element.hidden = Boolean(user && !pending && !blocked);
+    element.textContent = !configured ? "Локальный режим: Firebase пока не подключён" : user ? (pending ? `Синхронизация: ожидают отправки ${pending} изм.` : "") : guestMode ? "Гостевой режим: данные сохраняются на этом устройстве" : authState === "loading" ? "Подключаемся и восстанавливаем вход…" : authState === "error" ? "Сервис входа недоступен" : "Войдите, чтобы синхронизировать данные";
+  }
   if (element && blocked) element.textContent += ` Не приняты сервером: ${blocked}. Изменения сохранены на устройстве; проверьте данные и права доступа.`;
   updateAuthUI();
   window.dispatchEvent(new Event("nutrition-auth-status"));
@@ -429,6 +432,14 @@ function updateAuthUI() {
   const screen = document.getElementById("profile");
   if (!screen) return;
   if (!panel) { panel = document.createElement("section"); panel.id = "authPanel"; panel.className = "card"; screen.insertBefore(panel, document.getElementById("profileDocuments")); }
+  const nameCard = screen.querySelector('.card.profile');
+  if (user && nameCard) {
+    panel.className = 'profile-account';
+    if (panel.parentElement !== nameCard) nameCard.append(panel);
+  } else {
+    panel.className = 'card';
+    if (panel.parentElement !== screen) screen.insertBefore(panel, document.getElementById('profileDocuments'));
+  }
   if (!configured) { panel.innerHTML = '<b>Гостевой режим</b><p class="hello">Данные остаются на этом устройстве. После настройки Firebase здесь появится вход и синхронизация.</p><button class="secondary" type="button" disabled>Войти после настройки Firebase</button>'; return; }
   if (authState !== "ready") {
     panel.innerHTML = '<b>Подключение аккаунта</b><p class="hello" role="status"></p><button class="primary" type="button" id="retryAuth"></button><button class="secondary" type="button" id="guestAuth">Продолжить как гость</button>';
@@ -448,11 +459,12 @@ function updateAuthUI() {
     return;
   }
   if (user) {
-    const verification = user.email && !user.emailVerified ? '<p class="hello" id="emailVerificationMessage">Подтвердите email по ссылке из письма, чтобы завершить регистрацию.</p><button class="secondary" type="button" id="resendEmailVerification">Отправить письмо повторно</button><button class="link" type="button" id="checkEmailVerification">Я подтвердил email</button>' : '<p class="hello">Ваши данные синхронизируются с личным аккаунтом.</p>';
+    const verification = user.email && !user.emailVerified ? '<p class="hello" id="emailVerificationMessage">Подтвердите email по ссылке из письма, чтобы завершить регистрацию.</p><button class="secondary" type="button" id="resendEmailVerification">Отправить письмо повторно</button><button class="link" type="button" id="checkEmailVerification">Я подтвердил email</button>' : '';
     const providers = (user.providerData || []).map(provider => provider.providerId);
     const canAddPassword = user.email && providers.includes("google.com") && !providers.includes("password");
     const passwordLinking = canAddPassword ? '<form id="linkEmailPasswordForm"><p class="hello">Создайте пароль для входа с этим же email. Данные и аккаунт сохранятся.</p><label class="field">Новый пароль<input id="linkEmailPassword" type="password" autocomplete="new-password" minlength="6" required></label><button class="secondary" type="submit">Создать пароль для входа</button><p class="hello" id="linkEmailPasswordMessage"></p></form>' : '';
-    panel.innerHTML = `<b>${user.email || 'Аккаунт подключён'}</b>${verification}${passwordLinking}<button class="secondary" type="button" id="signOutButton">Выйти</button>`;
+    panel.innerHTML = `<div class="account-row"><span id="accountEmail" class="hello"></span><button class="link" type="button" id="signOutButton">Выйти</button></div>${verification}${passwordLinking}`;
+    document.getElementById('accountEmail').textContent = user.email || 'Аккаунт подключён';
     document.getElementById("signOutButton").onclick = () => window.firebaseSignOut();
     if (canAddPassword) {
       const form = document.getElementById("linkEmailPasswordForm");

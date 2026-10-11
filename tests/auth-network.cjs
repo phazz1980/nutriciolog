@@ -137,6 +137,27 @@ export const serverTimestamp=()=>0;
       assert.equal(await page.locator('#portion').inputValue(), '200');
     });
 
+    await check('Signed-in account is compact inside the name card; logout restores email form', {}, async ({page}) => {
+      await page.evaluate(()=>{window.test.setUser({uid:'profile-card',email:'test@example.invalid',displayName:'Test',getIdToken:async()=> 'test-token'});show('profile');});
+      await page.locator('.card.profile #accountEmail').waitFor();
+      assert.equal(await page.locator('#firebaseStatus').isHidden(),true);
+      assert.equal(await page.locator('#firebaseStatus').textContent(),'');
+      assert.ok(!(await page.locator('#authPanel').textContent()).includes('Ваши данные синхронизируются'));
+      assert.match(await page.locator('#releaseInfo').textContent(),/^Версия v\d+\.\d+\.\d+$/);
+      for(const width of [320,390,430]) {
+        await page.setViewportSize({width,height:844});
+        assert.ok(await page.locator('.card.profile').evaluate(card=>card.scrollWidth<=card.clientWidth));
+        assert.equal(await page.locator('#signOutButton').evaluate(button=>getComputedStyle(button).fontSize),'12px');
+      }
+      await page.setViewportSize({width:390,height:844});
+      await page.locator('.card.profile').screenshot({path:require('node:os').tmpdir()+'/nutrition-profile-account.png'});
+      await page.locator('#signOutButton').click();
+      await page.locator('#emailRegister').waitFor();
+      assert.equal(await page.locator('.card.profile #authPanel').count(),0);
+      assert.equal(await page.locator('#profile > #authPanel').count(),1);
+      assert.equal(await page.locator('#firebaseStatus').isHidden(),false);
+    });
+
     await check('A delayed token or SDK error does not open the signed-out dialog', {}, async ({ page }) => {
       await page.waitForFunction(() => window.getFirebaseAuthStatus().state === 'ready');
       await page.evaluate(() => window.test.setUser({ uid: 'account', getIdToken: () => new Promise(()=>{}) }));
