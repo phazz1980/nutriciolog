@@ -6,6 +6,8 @@ import { askAi, getAiToken, requestAiAdvice, clearErrors, clearServiceError, ava
 import { initAiAvailability } from "./ai-availability.js";
 import { initDailyAdvice } from "./daily-advice.js";
 import { initAiQuota } from "./ai-quota.js";
+import { initHealthConnect, getHealthWeight } from "./health-connect.js";
+import "./wear-pairing.js";
 import { createMealTimeline } from "./timeline.js";
 import { preparePhoto, openPhotoPicker } from "./photo-picker.js";
 import { showPhotoRecognitionDialog, parseMealEstimate, fillMealForm, setFormNutrition, clearFormNutrition, readFormNutrition, toastPhotoTransfer } from "./photo.js";
@@ -142,7 +144,10 @@ function createDiaryEntryRow(entry, { deletable = false } = {}) {
   const details = document.createElement("small");
   details.textContent = `${entry.portion || "—"} ${entry.portionUnit || "г"} · Б ${formatNumber(safeNumber(entry.protein))} · Ж ${formatNumber(safeNumber(entry.fat))} · У ${formatNumber(safeNumber(entry.carbs))}`;
   const calories = document.createElement("b");
-  calories.textContent = `${formatNumber(safeNumber(entry.calories))} ккал`;
+  calories.className = "meal-calories";
+  const calorieUnit = document.createElement("small");
+  calorieUnit.textContent = "ккал";
+  calories.append(`${formatNumber(safeNumber(entry.calories))} `, calorieUnit);
   description.append(title, details);
   item.append(description, calories);
 
@@ -304,6 +309,18 @@ async function renderDiaryForDate(date) {
 function renderWater() {
   const drops = element("drops");
   if (!drops) return;
+  const waterCard = drops.closest('.water');
+  if (!waterCard.querySelector('.water-title')) {
+    const title = document.createElement('h2');
+    title.className = 'water-title';
+    title.textContent = 'Вода';
+    waterCard.prepend(title);
+    element('waterText')?.closest('.section-head')?.remove();
+    const addButton = element('addWaterButton');
+    addButton.textContent = '+';
+    addButton.setAttribute('aria-label', 'Добавить стакан воды');
+    addButton.title = 'Добавить стакан воды';
+  }
   drops.replaceChildren();
   for (let index = 0; index < 8; index++) {
     const drop = document.createElement("button");
@@ -314,7 +331,8 @@ function renderWater() {
     drop.onclick = () => toggleWater(index);
     drops.append(drop);
   }
-  setText("waterText", `${water} из 8 стаканов`);
+  drops.setAttribute('role', 'group');
+  drops.setAttribute('aria-label', `Вода: отмечено ${water} из 8 стаканов`);
 }
 
 function ensureWaterDate() {
@@ -397,7 +415,10 @@ function renderPlan() {
       hint.textContent = "Нажмите, чтобы изменить";
       label.append(name, hint);
       const calories = document.createElement("b");
-      calories.textContent = `${formatNumber(item.calories)} ккал`;
+      calories.className = "meal-calories";
+      const calorieUnit = document.createElement("small");
+      calorieUnit.textContent = "ккал";
+      calories.append(`${formatNumber(item.calories)} `, calorieUnit);
       button.append(label, calories);
       button.onclick = () => openPlanItem(type, index);
       card.append(button);
@@ -657,6 +678,13 @@ function addWeight() {
     .sort((left, right) => String(left.date).localeCompare(String(right.date)))
     .at(-1);
   weightInput.value = Number(latestEntry?.weight ?? currentProfile?.weight) || "";
+  let weightEdited = false;
+  weightInput.addEventListener("input", () => { weightEdited = true; });
+  const formAccount = accountDefaults().uid;
+  getHealthWeight().then(healthWeight => {
+    if (!form.isConnected || weightEdited || accountDefaults().uid !== formAccount || !healthWeight) return;
+    if (!latestEntry || healthWeight.date >= latestEntry.date) weightInput.value = healthWeight.weight;
+  }).catch(() => {});
   dialog.querySelector("[data-close]").onclick = close;
   form.onsubmit = async event => {
     event.preventDefault();
@@ -786,7 +814,7 @@ function saveMeal(event) {
   persist("saveDiaryEntry", stored);
   const clarification = lastNutritionClarification;
   const hasClarification = clarification?.title === normalizeTitle(entry.title);
-  persist("saveProduct", {
+  const savedProduct = {
     title: entry.title,
     portion: entry.portion,
     unitWeight: entry.unitWeight,
@@ -795,7 +823,15 @@ function saveMeal(event) {
     fat: entry.fat,
     carbs: entry.carbs,
     ...(hasClarification ? { aiClarification: { question: clarification.question, additionalIngredients: clarification.additionalIngredients } } : {}),
-  });
+  };
+  persist("saveProduct", savedProduct);
+  // Не ждём повторной загрузки страницы: новая позиция должна появиться в
+  // личной базе и подсказках уже при следующем вводе названия.
+  const savedTitle = normalizeTitle(savedProduct.title);
+  savedMealProducts = savedMealProducts
+    .filter(product => normalizeTitle(product.title) !== savedTitle)
+    .concat(savedProduct);
+  renderMealSuggestions(savedMealProducts);
   closeMeal();
   event.target.reset();
   lastCalculatedUnitWeight = null;
@@ -988,7 +1024,6 @@ function setCalculateButton(busy) {
 }
 
 // Количество берём из названия или поля; иначе ИИ предлагает типичную порцию.
-// Подходящий продукт базы пользователь выбирает до расчёта.
 function applyDescriptionPortion() {
   const parsed = parsePortionDescription(element("mealName").value);
   if (!element("portion").value && parsed.amount) {
@@ -1006,11 +1041,6 @@ async function calculateMealNutrition(clarification = "") {
   setAutomaticPortionUnit();
   if (!validateMealEstimate()) return;
   await loadMealSuggestions();
-  if (!savedMealEstimate && matchingProducts(savedMealProducts, element("mealName").value).length) {
-    renderMealSuggestions(savedMealProducts);
-    toast("Выберите подходящий продукт из вашей базы");
-    return;
-  }
   const selectedBase = savedMealEstimate;
   const title = element("mealName").value.trim();
   const originalPortion = element("portion").value;
@@ -1751,6 +1781,7 @@ function boot() {
   initAiAvailability();
   initAiQuota();
   initDailyAdvice();
+  initHealthConnect();
 
   // Хранилище создаётся модулем firebase-client.js до этого модуля, поэтому
   // начальная загрузка запускается напрямую, а события обслуживают обновления.
