@@ -1,10 +1,10 @@
 import { parsePortionDescription, matchingProducts, APP_VERSION, RELEASE_DATE, DEFAULT_PROFILE, MEAL_TYPES, MAX_PHOTO_BYTES, safeNumber, formatNumber, firstName, normalizeTitle, mealTypeRank, mealTypeIcon, nutritionTargets, scaleNutrition, addNutrition, subtractNutrition, macroFields } from "./core.js";
 import { todayKey, dateKeyFor, diaryTitleForDate, formatDayTitle, formatShortDate, minutesUntilNextLocalDay } from "./date.js";
-import { hasStore, has, call, loadProfile as loadStoredProfile, accountDefaults, cachedProfilePreview, getAuthStatus, signInWithGoogle, onAuthChanged, onAuthStatus, onStoreReady, onProfileUpdated } from "./storage.js";
+import { hasStore, has, call, loadProfile as loadStoredProfile, accountDefaults, cachedProfilePreview, getAuthStatus, onAuthChanged, onAuthStatus, onStoreReady, onProfileUpdated } from "./storage.js";
 import { toast, setText, showScreen, openModal, closeModal, openDialog, showAiDiagnostic, removeAiDiagnostic, setAiDebug, clearAiDebug, showCalculationResult } from "./ui.js";
 import { askAi, getAiToken, requestAiAdvice, clearErrors, clearServiceError, availability } from "./ai-client.js";
 import { initAiAvailability } from "./ai-availability.js";
-import { initDailyAdvice } from "./daily-advice.js?release=v0.2.60";
+import { initDailyAdvice } from "./daily-advice.js?release=v0.3.12";
 import { initAiQuota } from "./ai-quota.js";
 import { createMealTimeline } from "./timeline.js";
 import { preparePhoto, openPhotoPicker } from "./photo-picker.js";
@@ -307,6 +307,18 @@ async function renderDiaryForDate(date) {
 function renderWater() {
   const drops = element("drops");
   if (!drops) return;
+  const waterCard = drops.closest('.water');
+  if (!waterCard.querySelector('.water-title')) {
+    const title = document.createElement('h2');
+    title.className = 'water-title';
+    title.textContent = 'Вода';
+    waterCard.prepend(title);
+    element('waterText')?.closest('.section-head')?.remove();
+    const addButton = element('addWaterButton');
+    addButton.textContent = '+';
+    addButton.setAttribute('aria-label', 'Добавить стакан воды');
+    addButton.title = 'Добавить стакан воды';
+  }
   drops.replaceChildren();
   for (let index = 0; index < 8; index++) {
     const drop = document.createElement("button");
@@ -317,7 +329,8 @@ function renderWater() {
     drop.onclick = () => toggleWater(index);
     drops.append(drop);
   }
-  setText("waterText", `${water} из 8 стаканов`);
+  drops.setAttribute('role', 'group');
+  drops.setAttribute('aria-label', `Вода: отмечено ${water} из 8 стаканов`);
 }
 
 function ensureWaterDate() {
@@ -477,7 +490,7 @@ function renderProfile() {
     if (currentAccount.photoUrl) {
       const photo = document.createElement("img");
       photo.src = currentAccount.photoUrl;
-      photo.alt = "Фото профиля Google";
+      photo.alt = "Фото профиля";
       photo.referrerPolicy = "no-referrer";
       photo.style.cssText = "width:100%;height:100%;object-fit:cover;border-radius:50%";
       avatar.append(photo);
@@ -1346,7 +1359,7 @@ async function requestAdvice(event) {
     });
     if (result.status === "no-token") return;
     if (result.status === "signed-out") {
-      setText("chatStatus", "Войдите через Google в профиле, чтобы воспользоваться ИИ.");
+      setText("chatStatus", "Войдите по email в профиле, чтобы воспользоваться ИИ.");
       showScreen("profile");
       return;
     }
@@ -1379,6 +1392,8 @@ let voiceCancelled = false;
 
 function setVoiceStatus(text) {
   setText("voiceStatus", text);
+  const status = element("voiceStatus");
+  if (status) status.hidden = !text;
 }
 
 function speak(text) {
@@ -1466,55 +1481,17 @@ function setupMealVoiceButton(button) {
 
 function showAuthRequiredDialog() {
   if (element("authRequiredDialog")) return;
-  let stopWatching = () => {};
   const { dialog, close } = openDialog({
     id: "authRequiredDialog",
     className: "modal show",
     labelledBy: "authRequiredTitle",
-    onClose: () => stopWatching(),
-    html: '<section class="sheet auth-sheet"><div class="auth-mark" aria-hidden="true">🌿</div><p class="auth-brand">Мой нутрициолог</p><h2 id="authRequiredTitle">Войти в аккаунт</h2><p class="auth-description">Сохраняйте свой дневник и получайте<br>подсказки ИИ о питании.</p><p class="auth-status" role="status" aria-live="polite"></p><button class="primary" type="button">Войти через Google</button><button class="link auth-later" type="button" data-close="true">Позже</button><p class="auth-note">Выбор аккаунта откроется в окне Google.<br>Ваш черновик блюда останется на месте.</p></section>',
+    html: '<section class="sheet auth-sheet"><div class="auth-mark" aria-hidden="true">🌿</div><p class="auth-brand">Мой нутрициолог</p><h2 id="authRequiredTitle">Войти в аккаунт</h2><p class="auth-description">Сохраняйте свой дневник и получайте<br>подсказки ИИ о питании.</p><button class="primary" type="button">Войти по email</button><button class="link auth-later" type="button" data-close="true">Позже</button><p class="auth-note">Откроется раздел профиля. Ваш черновик блюда останется на месте.</p></section>',
   });
   const signIn = dialog.querySelector(".primary");
   const cancel = dialog.querySelector(".auth-later");
-  const status = dialog.querySelector('[role="status"]');
-  const sheet = dialog.querySelector(".auth-sheet");
   cancel.onclick = close;
-
-  const refresh = () => {
-    const state = getAuthStatus();
-    signIn.disabled = Boolean(state?.pending);
-    signIn.textContent = state?.pending ? "Ожидаем вход…" : "Войти через Google";
-    sheet.setAttribute("aria-busy", String(Boolean(state?.pending)));
-    if (state?.message) status.textContent = state.message;
-  };
-  // Слушатель статуса входа нужен только пока окно открыто. Регистрация
-  // вызывает обработчик синхронно, поэтому refresh здесь объявлен выше.
-  stopWatching = onAuthStatus(refresh);
-
-  signIn.onclick = async () => {
-    const state = getAuthStatus();
-    const signInWithGoogleFn = signInWithGoogle();
-    if (!signInWithGoogleFn || state?.state !== "ready") {
-      close();
-      showScreen("profile");
-      toast("Дождитесь подключения или повторите его в профиле");
-      return;
-    }
-    status.dataset.error = "false";
-    status.textContent = "Загружается окно Google. При слабом интернете это может занять время.";
-    try {
-      await signInWithGoogleFn();
-      close();
-      toast("Вход выполнен");
-    } catch (error) {
-      refresh();
-      status.dataset.error = "true";
-      status.textContent = window.getAuthErrorMessage?.(error) || "Не удалось войти. Проверьте интернет и повторите попытку.";
-    }
-  };
-
-  refresh();
-  (signIn.disabled ? cancel : signIn).focus();
+  signIn.onclick = () => { close(); showScreen("profile"); };
+  signIn.focus();
 }
 
 /* ------------------------------------------------------------------ photo */

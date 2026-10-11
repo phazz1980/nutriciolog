@@ -12,6 +12,7 @@ function setHint(anchor, id, reason, { inlineHint = false } = {}) {
     anchor.after(hint);
   }
   hint.classList.toggle("ai-status-inline", Boolean(reason) && inlineHint);
+  hint.classList.toggle("ai-service-warning", reason === "ИИ временно недоступен. Можно повторить запрос позже.");
   hint.textContent = reason;
   hint.hidden = !reason;
 }
