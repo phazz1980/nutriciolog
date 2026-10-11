@@ -486,6 +486,7 @@ async function save(collection, id, value) {
   if (!configured || !user || !db) {
     localStorage.setItem(key(`${collection}:${id}`), JSON.stringify(value));
     reportDebug({ type: "save", mode: "local", collection, reason: "Нет авторизованного Firebase-пользователя" });
+    if (collection === 'foodDiary') window.dispatchEvent(new CustomEvent('nutrition-diary-saved', { detail: { owner: user?.uid || '', entry: value } }));
     return { mode: "local" };
   }
   const uid = user.uid;
@@ -500,6 +501,7 @@ async function save(collection, id, value) {
     }
     reportDebug({ type: "save", mode, collection });
     updateStatus();
+    if (collection === 'foodDiary') window.dispatchEvent(new CustomEvent('nutrition-diary-saved', { detail: { owner: uid, entry: value } }));
     return { mode };
   } catch (error) {
     if (isTemporaryFirestoreError(error) && queueWrite("set", collection, id, value, uid)) {
@@ -509,6 +511,7 @@ async function save(collection, id, value) {
       }
       reportDebug({ type: "save", mode: "queued", collection });
       updateStatus();
+      if (collection === 'foodDiary') window.dispatchEvent(new CustomEvent('nutrition-diary-saved', { detail: { owner: uid, entry: value } }));
       return { mode: "queued" };
     }
     reportDebug({ type: "save", mode: "error", collection, reason: String(error?.code || error?.message || "Неизвестная ошибка").slice(0, 180) });
@@ -704,16 +707,19 @@ window.nutritionStore = {
     if (!id) throw new Error("Не указана запись дневника");
     if (!configured || !user || !db) {
       localStorage.removeItem(key(`foodDiary:${id}`));
+      window.dispatchEvent(new CustomEvent('nutrition-diary-deleted', { detail: { owner: user?.uid || '', id } }));
       return { mode: "local" };
     }
     const uid = user.uid;
     try {
       const mode = await sendDurableWrite("delete", "foodDiary", String(id), null, uid);
       updateStatus();
+      window.dispatchEvent(new CustomEvent('nutrition-diary-deleted', { detail: { owner: uid, id } }));
       return { mode };
     } catch (error) {
       if (isTemporaryFirestoreError(error) && queueWrite("delete", "foodDiary", String(id), null, uid)) {
         updateStatus();
+        window.dispatchEvent(new CustomEvent('nutrition-diary-deleted', { detail: { owner: uid, id } }));
         return { mode: "queued" };
       }
       throw error;
