@@ -1,8 +1,9 @@
 import { AI_TIMEOUT_MS } from "./core.js";
 import { getAuthErrorMessage, getAuthStatus, getFirebaseIdToken } from "./storage.js";
 import { toast } from "./ui.js";
+import { AI_ENDPOINT, fetchAi } from "./ai-transport.js";
 
-export const AI_ENDPOINT = "https://functions.yandexcloud.net/d4evergfv4q48plpsdbu";
+export { AI_ENDPOINT };
 
 const listeners = new Set();
 let tokenError = "";
@@ -46,11 +47,12 @@ export async function refreshQuota() {
       if (navigator.onLine === false) throw new Error();
       const token = await getFirebaseIdToken()?.();
       if (!token || generation !== quotaGeneration) return;
-      const response = await fetch(AI_ENDPOINT, {
+      const response = await fetchAi({
         method: "POST", headers: authHeaders(token), body: JSON.stringify({ action: "usage" }),
-        cache: "no-store", signal: AbortSignal.timeout(15_000),
-      });
+        cache: "no-store",
+      }, { timeoutMs: 15_000, isCurrent: () => generation === quotaGeneration });
       const data = await response.json();
+      if (generation !== quotaGeneration) return;
       if (!response.ok || !acceptQuota(data.quota, generation)) throw new Error();
       costs = data.costs || null;
     } catch {
@@ -129,13 +131,14 @@ function logResponse(response) {
 export async function requestAiAdvice(options) {
   const generation = quotaGeneration;
   const { timeline, ...fetchOptions } = options;
-  const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
   activeRequests++;
   notify();
   timeline?.start();
   try {
-    const response = await fetch(AI_ENDPOINT, { ...fetchOptions, signal: controller.signal });
+    const response = await fetchAi(fetchOptions, {
+      timeoutMs: AI_TIMEOUT_MS, isCurrent: () => generation === quotaGeneration,
+    });
+    if (generation !== quotaGeneration) throw new DOMException("Account changed", "AbortError");
     logResponse(response);
     try { acceptQuota((await response.clone().json()).quota, generation); } catch { /* Response errors are handled by the caller. */ }
     if (response.ok) serviceError = "";
@@ -143,12 +146,12 @@ export async function requestAiAdvice(options) {
     else if (response.status === 429 || response.status >= 500) serviceError = "ИИ временно недоступен. Можно повторить запрос позже.";
     return response;
   } catch (error) {
+    if (generation !== quotaGeneration) throw error;
     serviceError = error?.name === "AbortError"
       ? "ИИ не ответил вовремя. Проверьте соединение и повторите запрос."
       : "Не удалось подключиться к ИИ. Проверьте интернет и повторите запрос.";
     throw new Error(serviceError);
   } finally {
-    window.clearTimeout(timer);
     timeline?.finish();
     activeRequests--;
     notify();

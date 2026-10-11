@@ -36,7 +36,12 @@ module.exports.createHandler = createHandler;
 module.exports.handler = async (event, context) => {
   const { default: worker } = await import('./worker/src/index.js');
   const env = { ...process.env };
-  if (env.YDB_DOCAPI_ENDPOINT && context?.token?.access_token) {
+  if (env.SHARED_QUOTA_ENDPOINT) {
+    const { createRemoteQuotaStore } = await import('./worker/src/quota-remote.js');
+    try {
+      env.AI_QUOTA_STORE = createRemoteQuotaStore({ endpoint: env.SHARED_QUOTA_ENDPOINT, secret: env.SHARED_QUOTA_SECRET });
+    } catch { /* Invalid shared configuration never falls back to a second counter. */ }
+  } else if (env.YDB_DOCAPI_ENDPOINT && context?.token?.access_token) {
     const { createYdbQuotaStore } = await import('./worker/src/quota-ydb.js');
     try {
       env.AI_QUOTA_STORE = createYdbQuotaStore({ endpoint: env.YDB_DOCAPI_ENDPOINT, table: env.YDB_QUOTA_TABLE, token: context.token.access_token });

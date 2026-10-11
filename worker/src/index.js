@@ -3,7 +3,7 @@ import { AiResponseFormatError } from "./providers/blackroute.js";
 import { userQuota, QuotaExceededError, QuotaUnavailableError } from "./quota.js";
 import { estimateUsage, readCosts } from './costs.js';
 
-const WORKER_VERSION = "0.1.22";
+const WORKER_VERSION = "0.1.23";
 
 const ALLOWED_ORIGINS = new Set([
   "https://nutriciolog.pages.dev",

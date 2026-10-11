@@ -1,10 +1,21 @@
 name = "my-nutritionist-advice"
-main = "src/index.js"
+main = "src/cloudflare.js"
 compatibility_date = "2026-09-15"
 
 [vars]
 AI_PROVIDER = "blackroute"
 BLACKROUTE_MODEL = "deepseek-v3.2-maas"
 BLACKROUTE_VISION_MODEL = "gemini-2.5-flash"
+AI_MONTHLY_REQUEST_LIMIT = "1000"
+# Enable only after BOTH gateways are configured to use the shared counter.
+SHARED_QUOTA_READY = "false"
+
+[[durable_objects.bindings]]
+name = "QUOTA_OBJECTS"
+class_name = "AiQuotaObject"
+
+[[migrations]]
+tag = "quota-sqlite-v1"
+new_sqlite_classes = ["AiQuotaObject"]
 
 # Never put BLACKROUTE_API_KEY here or in Git. Add it as a Cloudflare Worker secret.
