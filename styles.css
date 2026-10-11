@@ -222,9 +222,10 @@ button.meal-calculate-action:not(:disabled):hover,button.meal-calculate-action:n
 /* Device-local appearance; shared by Web and the Android bundle. */
 .theme-settings .setting{gap:12px;flex-wrap:wrap;padding:2px 0}
 #themePreference{max-width:100%;min-height:44px;padding:8px 10px;border:1px solid var(--line);border-radius:12px;background:var(--paper);color:var(--ink);font-size:16px}
-:root[data-theme="dark"]{--green:#72d6ac;--mint:#203d31;--orange:#ffb275;--ink:#e4f0e9;--muted:#a4b9ad;--line:#34483e;--paper:#14231e}
-[data-theme="dark"] body{background:#0c1713}
-[data-theme="dark"] .card,[data-theme="dark"] .bottom,[data-theme="dark"] .sheet,[data-theme="dark"] .auth-mark{background:#1b2e25}
+:root[data-theme="dark"]{--green:#72d6ac;--mint:#203d31;--orange:#ffb275;--ink:#e4f0e9;--muted:#a4b9ad;--line:#34483e;--paper:#000}
+[data-theme="dark"] body{background:var(--paper)}
+[data-theme="dark"] .bottom{background:var(--paper)}
+[data-theme="dark"] .card,[data-theme="dark"] .sheet,[data-theme="dark"] .auth-mark{background:#1b2e25}
 [data-theme="dark"] .macro div,[data-theme="dark"] .ai-costs-grid div,[data-theme="dark"] .ai-response-diagnostic pre{background:#20372c}
 [data-theme="dark"] input,[data-theme="dark"] select{background:var(--paper);color:var(--ink)}
 [data-theme="dark"] input::placeholder{color:var(--muted);opacity:1}

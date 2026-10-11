@@ -14,13 +14,23 @@ const render = source.slice(source.indexOf('function updateAuthUI()'), source.in
     await page.evaluate(render => {
       window.testCalls=[];
       for (const name of ['firebaseSignInWithEmail','firebaseRegisterWithEmail','firebaseSendPasswordReset']) window[name]=async(...args)=>window.testCalls.push({name,args});
-      new Function('const configured=true, user=null, authState="ready", signInAttempt=null, authMessage="";'+render+';updateAuthUI();')();
+      new Function('const configured=true, user=null, authState="ready";let signInAttempt=null, authMessage="";'+render+';window.testRenderAuth=(pending,error="")=>{signInAttempt=pending?Promise.resolve():null;authMessage=error;updateAuthUI();};updateAuthUI();')();
     }, render);
     assert.equal(await page.locator('#googleSignIn').count(),0);
     assert.ok(!source.includes('GoogleAuthProvider'));
     assert.ok(!fs.readFileSync(path.join(root,'js/app.js'),'utf8').includes('Войти через Google'));
     await page.locator('#emailAuthEmail').fill('test@example.com');
     await page.locator('#emailAuthPassword').fill('example-password');
+    assert.equal(await page.locator('#emailAuthEmail').getAttribute('autocomplete'),'username');
+    assert.equal(await page.locator('#emailAuthEmail').getAttribute('name'),'username');
+    assert.equal(await page.locator('#emailAuthPassword').getAttribute('autocomplete'),'current-password');
+    await page.evaluate(()=>{window.originalPasswordField=document.getElementById('emailAuthPassword');window.testRenderAuth(true);});
+    assert.equal(await page.locator('#emailAuthPassword').inputValue(),'example-password');
+    assert.equal(await page.evaluate(()=>window.originalPasswordField===document.getElementById('emailAuthPassword')),true);
+    assert.equal(await page.locator('#emailSignIn').isDisabled(),true);
+    await page.evaluate(()=>window.testRenderAuth(false,'Неверный пароль'));
+    assert.equal(await page.locator('#emailAuthPassword').inputValue(),'example-password');
+    assert.equal(await page.locator('#emailSignIn').isDisabled(),false);
     await page.locator('#emailRegister').click();
     await page.locator('#passwordReset').click();
     await page.locator('#emailSignIn').click();
