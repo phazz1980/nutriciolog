@@ -274,7 +274,10 @@ function startEmailAttempt(action) {
   if (authState !== "ready") return Promise.reject(authError(authState === "loading" ? "auth/loading" : "auth/unavailable"));
   if (navigator.onLine === false) return Promise.reject(authError("auth/network-request-failed"));
   authMessage = "";
-  signInAttempt = Promise.resolve(action()).catch(error => {
+  signInAttempt = Promise.resolve(action()).then(async credential => {
+    if (credential?.user) await finishCredentialAutofill();
+    return credential;
+  }).catch(error => {
     authMessage = window.getAuthErrorMessage(error);
     throw error;
   }).finally(() => {
@@ -283,6 +286,19 @@ function startEmailAttempt(action) {
   });
   updateStatus();
   return signInAttempt;
+}
+
+async function finishCredentialAutofill() {
+  if (window.Capacitor?.getPlatform?.() !== "android") return;
+  const plugin = window.Capacitor.Plugins?.CredentialAutofill;
+  if (!plugin || !document.getElementById("emailAuthForm")) return;
+  let timer;
+  try {
+    // Commit only after Firebase confirms success, before removing the fields.
+    // The bridge receives no email/password; Android owns credential storage.
+    await Promise.race([plugin.completeLogin(), new Promise(resolve => { timer = setTimeout(resolve, 1500); })]);
+  } catch { /* An unavailable password manager must not block login. */ }
+  finally { clearTimeout(timer); }
 }
 
 window.firebaseSignInWithEmail = (email, password) => startEmailAttempt(() => startEmailSignIn(email, password));
@@ -373,7 +389,8 @@ async function connectFirebase() {
   startPasswordReset = email => authSdk.sendPasswordResetEmail(auth, email);
   startEmailVerification = account => authSdk.sendEmailVerification(account);
   startEmailLinking = (email, password) => authSdk.linkWithCredential(auth.currentUser, authSdk.EmailAuthProvider.credential(email, password));
-  await new Promise((resolve, reject) => authSdk.onAuthStateChanged(auth, current => {
+  await new Promise((resolve, reject) => authSdk.onAuthStateChanged(auth, async current => {
+    if (current && !user && signInAttempt) await signInAttempt.catch(() => {});
     if (user?.uid && user.uid !== current?.uid) removeCachedProfile(user.uid);
     profileGeneration++;
     profileRefresh = null;
@@ -489,7 +506,15 @@ function updateAuthUI() {
     };
     return;
   }
-  panel.innerHTML = '<b>Синхронизация данных</b><p class="hello" id="authMessage">Войдите через email и пароль, чтобы сохранять данные в личном аккаунте. До входа приложение работает как гость.</p><form id="emailAuthForm"><label class="field">Email<input id="emailAuthEmail" type="email" autocomplete="email" inputmode="email" required></label><label class="field">Пароль<input id="emailAuthPassword" type="password" autocomplete="current-password" minlength="6" required></label><button class="primary" type="submit" id="emailSignIn">Войти по email</button><button class="link" type="button" id="emailRegister">Создать аккаунт</button><button class="link" type="button" id="passwordReset">Восстановить пароль</button></form>';
+  // Keep the same DOM fields while authentication is pending (WebView autofill
+  // tracks their virtual IDs). Never persist their values in application storage.
+  if (panel.querySelector('#emailAuthForm')) {
+    document.getElementById('authMessage').textContent = authMessage || (signInAttempt ? 'Выполняем вход…' : 'Войдите через email и пароль, чтобы сохранять данные в личном аккаунте. До входа приложение работает как гость.');
+    for (const id of ['emailSignIn', 'emailRegister']) document.getElementById(id).disabled = Boolean(signInAttempt);
+    document.getElementById('emailAuthForm').setAttribute('aria-busy', String(Boolean(signInAttempt)));
+    return;
+  }
+  panel.innerHTML = '<b>Синхронизация данных</b><p class="hello" id="authMessage">Войдите через email и пароль, чтобы сохранять данные в личном аккаунте. До входа приложение работает как гость.</p><form id="emailAuthForm" autocomplete="on"><label class="field">Email<input id="emailAuthEmail" name="username" type="email" autocomplete="username" inputmode="email" required></label><label class="field">Пароль<input id="emailAuthPassword" name="password" type="password" autocomplete="current-password" minlength="6" required></label><button class="primary" type="submit" id="emailSignIn">Войти по email</button><button class="link" type="button" id="emailRegister">Создать аккаунт</button><button class="link" type="button" id="passwordReset">Восстановить пароль</button></form>';
   const message = document.getElementById("authMessage");
   const form = document.getElementById("emailAuthForm");
   const email = document.getElementById("emailAuthEmail");
