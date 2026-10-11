@@ -6,13 +6,14 @@ let checkedAt = 0;
 export function validateAnnouncement(value, now = Date.now()) {
   if (value?.enabled !== true || typeof value.title !== "string" || !value.title.trim() ||
       value.title.length > 80 || typeof value.message !== "string" || !value.message.trim() ||
-      value.message.length > 600 || !Number.isFinite(Date.parse(value.expiresAt)) ||
-      Date.parse(value.expiresAt) <= now) return null;
+      value.message.length > 600 || (value.expiresAt !== null &&
+      (typeof value.expiresAt !== "string" || !Number.isFinite(Date.parse(value.expiresAt)) ||
+      Date.parse(value.expiresAt) <= now))) return null;
   return { title: value.title.trim(), message: value.message.trim(), expiresAt: value.expiresAt };
 }
 
 export function activeAnnouncement() {
-  return current && Date.parse(current.expiresAt) > Date.now() ? current : null;
+  return current && (current.expiresAt === null || Date.parse(current.expiresAt) > Date.now()) ? current : null;
 }
 
 export async function refreshAnnouncement() {
