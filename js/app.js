@@ -142,7 +142,10 @@ function createDiaryEntryRow(entry, { deletable = false } = {}) {
   const details = document.createElement("small");
   details.textContent = `${entry.portion || "—"} ${entry.portionUnit || "г"} · Б ${formatNumber(safeNumber(entry.protein))} · Ж ${formatNumber(safeNumber(entry.fat))} · У ${formatNumber(safeNumber(entry.carbs))}`;
   const calories = document.createElement("b");
-  calories.textContent = `${formatNumber(safeNumber(entry.calories))} ккал`;
+  calories.className = "meal-calories";
+  const calorieUnit = document.createElement("small");
+  calorieUnit.textContent = "ккал";
+  calories.append(`${formatNumber(safeNumber(entry.calories))} `, calorieUnit);
   description.append(title, details);
   item.append(description, calories);
 
@@ -397,7 +400,10 @@ function renderPlan() {
       hint.textContent = "Нажмите, чтобы изменить";
       label.append(name, hint);
       const calories = document.createElement("b");
-      calories.textContent = `${formatNumber(item.calories)} ккал`;
+      calories.className = "meal-calories";
+      const calorieUnit = document.createElement("small");
+      calorieUnit.textContent = "ккал";
+      calories.append(`${formatNumber(item.calories)} `, calorieUnit);
       button.append(label, calories);
       button.onclick = () => openPlanItem(type, index);
       card.append(button);
