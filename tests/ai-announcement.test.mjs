@@ -31,6 +31,14 @@ test("notice rejects disabled, expired, incomplete and oversized configuration",
     assert.equal(validateAnnouncement(value), null);
   }
 });
+test("explicit permanent notice remains valid until manually disabled", () => {
+  const permanent = { ...notice, expiresAt: null };
+  assert.equal(validateAnnouncement(permanent, Date.parse("2200-01-01")).expiresAt, null);
+  assert.equal(validateAnnouncement({ ...permanent, enabled: false }), null);
+  const missingExpiry = { ...notice };
+  delete missingExpiry.expiresAt;
+  assert.equal(validateAnnouncement(missingExpiry), null);
+});
 
 async function fixture(uid) {
   const source = (await readFile(new URL("../js/daily-advice.js", import.meta.url), "utf8"))
