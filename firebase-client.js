@@ -123,7 +123,7 @@ async function localFirstRead(collection, scope, fetcher) {
       if (uid) cacheRead(uid, collection, scope, result);
       failedReads.delete(refreshKey);
       publishReadStatus();
-      if ((cached || pending) && JSON.stringify(cached?.data) !== JSON.stringify(result)) window.dispatchEvent(new CustomEvent('nutrition-data-updated', { detail: { uid, collection, scope } }));
+      if ((cached || pending) && JSON.stringify(cached?.data) !== JSON.stringify(result)) window.dispatchEvent(new CustomEvent('nutrition-data-updated', { detail: { uid, collection, scope, data: cachedReadValue(uid, collection, scope, readCache(uid, collection, scope)) } }));
       return result;
     })().catch(error => {
       if (displayOwner() === uid && (isTemporaryFirestoreError(error) || ['auth/unavailable','auth/loading','auth/network-request-failed'].includes(error?.code))) {

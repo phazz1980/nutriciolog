@@ -5,7 +5,7 @@ import { hasStore, has, call, loadProfile as loadStoredProfile, accountDefaults,
 import { toast, setText, showScreen, openModal, closeModal, openDialog, showAiDiagnostic, removeAiDiagnostic, setAiDebug, clearAiDebug, showCalculationResult } from "./ui.js";
 import { askAi, getAiToken, requestAiAdvice, clearErrors, clearServiceError, availability } from "./ai-client.js";
 import { initAiAvailability } from "./ai-availability.js";
-import { initDailyAdvice } from "./daily-advice.js?release=v0.4.6";
+import { initDailyAdvice } from "./daily-advice.js?release=v0.4.7";
 import { initAiQuota } from "./ai-quota.js";
 import { initHealthConnect, getHealthWeight } from "./health-connect.js";
 import "./wear-pairing.js";
@@ -48,6 +48,7 @@ let mealCalculationBusy = false;
 let savedMealProducts = [];
 let savedMealProductsUid = "";
 let savedMealProductsLoading = null;
+let savedMealProductsRevision = 0;
 let skipMealSuggestionsOnFocus = false;
 let voiceOn = false;
 
@@ -969,22 +970,26 @@ async function deleteSavedMealProduct(product) {
 }
 
 async function loadMealSuggestions() {
-  const account = accountDefaults();
-  if (savedMealProductsUid === account.uid && savedMealProducts.length) return savedMealProducts;
-  if (savedMealProductsLoading) return savedMealProductsLoading;
-  savedMealProductsLoading = Promise.resolve(call("listProducts"))
+  const uid = window.nutritionStore?.getDisplayOwner?.() || accountDefaults().uid || '';
+  if (savedMealProductsUid === uid && savedMealProducts.length) return savedMealProducts;
+  if (savedMealProductsLoading?.uid === uid) return savedMealProductsLoading.promise;
+  const request = { uid, revision: savedMealProductsRevision };
+  request.promise = Promise.resolve(call("listProducts"))
     .then(products => {
+      const owner = window.nutritionStore?.getDisplayOwner?.() || accountDefaults().uid || '';
+      if (uid !== owner || request.revision !== savedMealProductsRevision) return savedMealProducts;
       savedMealProducts = Array.isArray(products) ? products : [];
-      savedMealProductsUid = account.uid;
+      savedMealProductsUid = uid;
       renderMealSuggestions(savedMealProducts);
       return savedMealProducts;
     })
-    .catch(() => [])
-    .finally(() => { savedMealProductsLoading = null; });
-  return savedMealProductsLoading;
+    .catch(() => savedMealProductsUid === uid ? savedMealProducts : [])
+    .finally(() => { if (savedMealProductsLoading === request) savedMealProductsLoading = null; });
+  savedMealProductsLoading = request;
+  return request.promise;
 }
 
-// Выбор из личной базы не задаёт порцию: БЖУ пересчитаются после её ввода.
+// Without an entered portion show the saved base per 100 g, never blank macros.
 function applySavedMealProduct(chosenUnit) {
   applyDescriptionPortion();
   if (typeof chosenUnit === "string") setPortionUnit(chosenUnit);
@@ -1006,7 +1011,23 @@ function applySavedMealProduct(chosenUnit) {
   if (Number(element("portion").value) > 0) {
     fillSavedMealNutrition();
     if (!element("calories").value) toast("Для количества штук нужен вес: нажмите ✦, ИИ предложит оценку");
-  } else toast("Укажите количество в названии или нажмите ✦ для оценки порции");
+  } else {
+    if (showSavedMealPer100()) {
+      toast('Показаны значения на 100 г. Укажите вес своей порции.');
+    } else toast('В базе не указан вес. Введите калории и БЖУ или уточните их с ИИ.');
+  }
+}
+
+function showSavedMealPer100() {
+  const base = savedMealEstimate;
+  if (!base) return false;
+  const grams = base.portion * (base.unitWeight || 1);
+  const per100 = scaleNutrition({ ...base, portion: grams }, 100);
+  if (!per100) return false;
+  setFormNutrition(per100);
+  element('nutritionBasis100').checked = true;
+  setPortionUnit('г');
+  return true;
 }
 
 function fillSavedMealNutrition() {
@@ -1017,6 +1038,7 @@ function fillSavedMealNutrition() {
     return;
   }
   let target = Number(element("portion").value);
+  if (!(target > 0)) { if (!showSavedMealPer100()) clearFormNutrition(); return; }
   const targetUnit = portionUnit();
   if (base.portionUnit !== targetUnit) {
     const weight = base.unitWeight || (lastCalculatedUnitWeight?.title === base.title ? lastCalculatedUnitWeight.weight : null);
@@ -1043,8 +1065,13 @@ function fillRecognizedMealNutrition() {
 }
 
 function fillMealNutritionFromPortion() {
+  if (savedMealEstimate && element('nutritionBasis100')?.checked && Number(element('portion').value) > 0) {
+    element('nutritionBasisPortion').checked = true;
+  }
   setAutomaticPortionUnit();
-  if (element("nutritionBasis100")?.checked) return;
+  // The saved base auto-switches from its 100 g preview to the entered portion.
+  // Manual per-100 g values must keep their user's chosen basis unchanged.
+  if (element("nutritionBasis100")?.checked && !savedMealEstimate) return;
   if (savedMealEstimate) fillSavedMealNutrition();
   else fillRecognizedMealNutrition();
 }
@@ -1750,6 +1777,10 @@ function initMealForm() {
     savedMealEstimate = null;
     recognizedManualMealEstimate = null;
     renderMealSuggestions(savedMealProducts);
+    // A first read or a background update may have completed while typing.
+    loadMealSuggestions().then(() => {
+      if (document.activeElement === name) renderMealSuggestions(savedMealProducts);
+    });
   });
   name.addEventListener("blur", () => window.setTimeout(() => {
     suggestionsBox.hidden = true;
@@ -1901,6 +1932,8 @@ function boot() {
     }
     savedMealProducts = [];
     savedMealProductsUid = "";
+    savedMealProductsRevision++;
+    savedMealProductsLoading = null;
     savedMealEstimate = null;
     suggestions()?.replaceChildren();
     if (suggestions()) suggestions().hidden = true;
@@ -1919,7 +1952,12 @@ function boot() {
     if (collection === 'foodDiary' && scope === selectedDiaryDate) renderDiaryForDate(selectedDiaryDate);
     if (collection === 'waterLogs' && scope === todayKey()) loadWater();
     if (collection === 'weightEntries') loadWeightProgress();
-    if (collection === 'products') savedMealProducts = [];
+    if (collection === 'products') {
+      savedMealProductsRevision++;
+      savedMealProducts = Array.isArray(event.detail.data) ? event.detail.data : [];
+      savedMealProductsUid = event.detail.uid || '';
+      if (document.activeElement === element('mealName')) renderMealSuggestions(savedMealProducts);
+    }
   });
   window.addEventListener('nutrition-data-retry', () => {
     refreshProfileFromAccount();

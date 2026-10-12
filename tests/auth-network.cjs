@@ -412,6 +412,48 @@ export const serverTimestamp=()=>0;
     });
 
     // SW behavior without a real Google connection or a persistent browser cache.
+    await check('Selecting a saved dish shows macros without entering portion or refocusing', {products:[{title:'Суп из базы',portion:200,calories:400,protein:20,fat:10,carbs:40}]}, async ({page}) => {
+      await page.evaluate(()=>window.test.setUser({uid:'macro-user',getIdToken:async()=>'test-token'}));
+      await page.locator('#todayAddMealButton').click();
+      await page.locator('#mealName').fill('суп');
+      await page.locator('.meal-suggestion',{hasText:'Суп из базы'}).click();
+      assert.equal(await page.locator('#portion').inputValue(),'');
+      assert.equal(await page.locator('#nutritionBasis100').isChecked(),true);
+      assert.equal(await page.locator('#calories').inputValue(),'200');
+      assert.equal(await page.locator('#protein').inputValue(),'10');
+      assert.equal(await page.locator('#fat').inputValue(),'5');
+      assert.equal(await page.locator('#carbs').inputValue(),'20');
+      await page.locator('#portion').fill('250');
+      assert.equal(await page.locator('#nutritionBasisPortion').isChecked(),true);
+      assert.equal(await page.locator('#calories').inputValue(),'500');
+      assert.equal(await page.locator('#protein').inputValue(),'25');
+      assert.equal(await page.locator('#fat').inputValue(),'12.5');
+      assert.equal(await page.locator('#carbs').inputValue(),'50');
+      const values=await page.evaluate(async()=>{const {readFormNutrition}=await import('./js/photo.js');return readFormNutrition();});
+      assert.deepEqual(values,{calories:500,protein:25,fat:12.5,carbs:50});
+      await page.locator('#portion').fill('');
+      assert.equal(await page.locator('#nutritionBasis100').isChecked(),true);
+      assert.equal(await page.locator('#calories').inputValue(),'200');
+      assert.equal(await page.locator('#protein').inputValue(),'10');
+      assert.equal(await page.evaluate(()=>window.test.writes.length),0);
+    });
+    await check('Product suggestions update while typing without blur/refocus', {products:[{title:'Сыр российский',portion:100,calories:350,protein:25,fat:27,carbs:0}]}, async ({page}) => {
+      await page.evaluate(()=>window.test.setUser({uid:'suggestions-user',getIdToken:async()=>'test-token'}));
+      await page.locator('#todayAddMealButton').click();
+      const name=page.locator('#mealName');
+      await name.fill('сыр');
+      await page.locator('.meal-suggestion',{hasText:'Сыр российский'}).waitFor();
+      await page.evaluate(async()=>{
+        window.test.products=[{title:'Сыр новый',portion:100,calories:250,protein:20,fat:18,carbs:0}];
+        await window.nutritionStore.listProducts();
+      });
+      await page.locator('.meal-suggestion',{hasText:'Сыр новый'}).waitFor();
+      assert.equal(await name.evaluate(node=>document.activeElement===node),true);
+      await name.fill('сыр но');
+      await page.locator('.meal-suggestion',{hasText:'Сыр новый'}).waitFor();
+      assert.equal(await page.locator('.meal-suggestion',{hasText:'Сыр российский'}).count(),0);
+      assert.equal(await name.evaluate(node=>document.activeElement===node),true);
+    });
     await check('Portion from text offers personal products and scales without an AI request', {products:[{title:'Сыр российский',portion:100,calories:350,protein:25,fat:27,carbs:0}]}, async ({page}) => {
       await page.evaluate(() => window.test.setUser({uid:'portion-user',getIdToken:async()=> 'test-token'}));
       await page.locator('#todayAddMealButton').click();
