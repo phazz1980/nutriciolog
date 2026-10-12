@@ -320,6 +320,15 @@ function publishProfile(uid, profile) {
   window.dispatchEvent(new CustomEvent("nutrition-profile-updated", { detail: { uid, profile } }));
 }
 
+async function serverSnapshot(kind, reference) {
+  const sdk = window.__firestore;
+  const read = kind === 'document' ? (sdk.getDocFromServer || sdk.getDoc) : (sdk.getDocsFromServer || sdk.getDocs);
+  const snapshot = await withAuthTimeout(read(reference), 'unavailable');
+  // An empty local Firestore snapshot is not confirmation of server deletion.
+  if (snapshot.metadata?.fromCache) throw authError('unavailable');
+  return snapshot;
+}
+
 function refreshAccountProfile(uid) {
   if (profileSaving) return Promise.resolve(cachedProfile(uid)?.profile ?? null);
   const generation = profileGeneration;
@@ -327,7 +336,7 @@ function refreshAccountProfile(uid) {
   const refresh = { uid, generation };
   refresh.promise = (async () => {
     const { doc, getDoc } = window.__firestore;
-    const snapshot = await getDoc(doc(db, "users", uid, "profile", "main"));
+    const snapshot = await serverSnapshot('document', doc(db, "users", uid, "profile", "main"));
     if (user?.uid !== uid || generation !== profileGeneration) return cachedProfile(uid)?.profile ?? null;
     const profile = profileFields(overlayPendingDocument("profile", "main", snapshot.exists() ? snapshot.data() : null));
     cacheProfile(uid, profile);
@@ -712,7 +721,7 @@ async function fetchProduct(name) {
   if (!configured || !user || !db) return localProduct ? JSON.parse(localProduct) : null;
   try {
     const { doc, getDoc } = window.__firestore;
-    const snapshot = await getDoc(doc(db, "users", user.uid, "products", normalizedName));
+    const snapshot = await serverSnapshot('document', doc(db, "users", user.uid, "products", normalizedName));
     return overlayPendingDocument("products", normalizedName, snapshot.exists() ? snapshot.data() : null);
   } catch (error) {
     throw error;
@@ -733,7 +742,7 @@ async function fetchProducts() {
   }
   try {
     const { collection, getDocs } = window.__firestore;
-    const snapshot = await getDocs(collection(db, "users", user.uid, "products"));
+    const snapshot = await serverSnapshot('collection', collection(db, "users", user.uid, "products"));
     return overlayPendingCollection("products", snapshot.docs.map(document => ({ ...document.data(), id: document.id })))
       .filter(product => typeof product?.title === "string" && product.title.trim());
   } catch (error) {
@@ -797,7 +806,7 @@ async function fetchWaterLog(date) {
   }
   try {
     const { doc, getDoc } = window.__firestore;
-    const snapshot = await getDoc(doc(db, "users", user.uid, "waterLogs", safeDate));
+    const snapshot = await serverSnapshot('document', doc(db, "users", user.uid, "waterLogs", safeDate));
     return overlayPendingDocument("waterLogs", safeDate, snapshot.exists() ? snapshot.data() : null);
   } catch (error) {
     throw error;
@@ -817,7 +826,7 @@ async function fetchDiaryEntries(date) {
   }
   try {
     const { collection, getDocs, query, where } = window.__firestore;
-    const snapshot = await getDocs(query(collection(db, "users", user.uid, "foodDiary"), where("date", "==", date)));
+    const snapshot = await serverSnapshot('collection', query(collection(db, "users", user.uid, "foodDiary"), where("date", "==", date)));
     return overlayPendingCollection("foodDiary", snapshot.docs.map(document => ({ ...document.data(), id: document.id })))
       .filter(entry => entry?.date === date);
   } catch (error) {
@@ -831,6 +840,7 @@ async function fetchDiaryEntries(date) {
             collection(firestoreLiteDb, "users", user.uid, "foodDiary"),
             where("date", "==", date),
           ));
+          if (snapshot.metadata?.fromCache) throw authError('unavailable');
           return overlayPendingCollection("foodDiary", snapshot.docs.map(document => ({ ...document.data(), id: document.id })))
             .filter(entry => entry?.date === date);
         }
@@ -854,7 +864,7 @@ async function fetchWeightEntries() {
   }
   try {
     const { collection, getDocs } = window.__firestore;
-    const snapshot = await getDocs(collection(db, "users", user.uid, "weightEntries"));
+    const snapshot = await serverSnapshot('collection', collection(db, "users", user.uid, "weightEntries"));
     return overlayPendingCollection("weightEntries", snapshot.docs.map(document => ({ ...document.data(), id: document.id })))
       .filter(entry => entry?.date && Number.isFinite(Number(entry.weight)));
   } catch (error) {
@@ -874,6 +884,12 @@ async function loadProduct(name) {
 }
 
 window.nutritionStore = {
+  refreshData: async date => {
+    await Promise.all([loadProfile(), loadDiaryEntries(date || localDateKey()), loadWaterLog(localDateKey()), loadWeightEntries(), listProducts()]);
+    const results = await Promise.allSettled([...readRefreshes.values(), ...(profileRefresh?.promise ? [profileRefresh.promise] : [])]);
+    if (results.some(result => result.status === 'rejected') || failedReads.size || navigator.onLine === false) throw authError('unavailable');
+    window.dispatchEvent(new Event('nutrition-data-retry'));
+  },
   getDisplayOwner: displayOwner,
   saveProfile: profile => save("profile", "main", profile),
   loadProfile,

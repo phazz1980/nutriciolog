@@ -1,4 +1,4 @@
-const CACHE = "my-nutritionist-shell-v77";
+const CACHE = "my-nutritionist-shell-v78";
 const SHELL = [
   "./",
   "./index.html",
@@ -9,9 +9,9 @@ const SHELL = [
   "./icons/app-icon.svg",
   "./icons/nutritionist-logo.png",
   "./js/app.js",
-  "./js/app.js?release=v0.4.5",
-  "./js/daily-advice.js?release=v0.4.5",
-  "./js/ai-announcement.js?release=v0.4.5",
+  "./js/app.js?release=v0.4.6",
+  "./js/daily-advice.js?release=v0.4.6",
+  "./js/ai-announcement.js?release=v0.4.6",
   "./js/ai-availability.js",
   "./js/ai-client.js",
   "./js/ai-announcement.js",
@@ -31,6 +31,7 @@ const SHELL = [
   "./js/wear-config.js",
   "./js/wear-pairing.js",
   "./js/native-appearance.js",
+  "./js/pull-refresh.js",
 ];
 const FIREBASE_SDK = ["https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js", "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js", "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js"];
 const SHELL_URLS = new Set([...SHELL.map(path => new URL(path, self.registration.scope).href), ...FIREBASE_SDK]);
