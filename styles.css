@@ -263,3 +263,4 @@ button.meal-calculate-action:not(:disabled):hover,button.meal-calculate-action:n
 [data-theme="dark"] .nav[data-nav="assistant"] span{color:var(--green)}
 [data-theme="dark"] .toast{background:#dcece2;color:#14231e}
 .external-ai-help { display:block; margin:8px 0 12px; text-align:left; }
+.pull-refresh-indicator { position:fixed; z-index:12; top:env(safe-area-inset-top, 0px); left:50%; max-width:90vw; padding:10px 16px; border:1px solid var(--line); border-radius:18px; background:var(--paper); color:var(--ink); box-shadow:0 4px 16px #0002; font-size:13px; pointer-events:none; }

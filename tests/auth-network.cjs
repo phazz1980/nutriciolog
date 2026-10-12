@@ -33,9 +33,9 @@ export const getDoc=async parts=>{
   if(parts[3]==='profile'&&window.test.holdProfile){
     return new Promise((resolve,reject)=>window.test.profileReads.push({uid:parts[2],resolve:value=>resolve({exists:()=>value!==null,data:()=>value}),reject}));
   }
-  return {exists:()=>false};
+  return {exists:()=>false,metadata:{fromCache:Boolean(window.test.fromCache)}};
 };
-export const getDocs=async parts=>{if(window.test.failRead)throw Object.assign(new Error('Offline'),{code:'unavailable'});return {docs:(parts[3]==='products' ? window.test.products||[] : []).map((item,i)=>({id:String(i),data:()=>item}))}};
+export const getDocs=async parts=>{if(window.test.failRead)throw Object.assign(new Error('Offline'),{code:'unavailable'});return {metadata:{fromCache:Boolean(window.test.fromCache)},docs:(parts[3]==='products' ? window.test.products||[] : []).map((item,i)=>({id:String(i),data:()=>item}))}};
 export const setDoc=async(...args)=>{if(window.test.failSave){const error=new Error('Offline');error.code=window.test.failSaveCode||'unavailable';throw error}window.test.writes.push(args)};
 export const deleteDoc=async()=>{};
 export const serverTimestamp=()=>0;
@@ -110,6 +110,23 @@ export const serverTimestamp=()=>0;
       await page.waitForTimeout(300);
       assert.equal(await page.locator('#eaten').textContent(),'300');
       assert.equal(await page.locator('#drops .drop.full').count(),4);
+    });
+
+    await check('Restoring same account with empty Firestore cache does not erase diary or water', {cachedOffline:true,delaySession:true,fromCache:true}, async ({page}) => {
+      await page.waitForFunction(()=>document.getElementById('eaten').textContent==='300');
+      const transitions=await page.evaluate(()=>{
+        window.cachedTransitions=[];
+        const node=document.getElementById('eaten');
+        new MutationObserver(()=>window.cachedTransitions.push(node.textContent)).observe(node,{childList:true,characterData:true,subtree:true});
+        window.test.setUser({uid:'offline-user',email:'test@example.invalid',getIdToken:async()=>'test-token'});
+        return true;
+      });
+      await page.waitForTimeout(500);
+      assert.equal(transitions,true);
+      assert.equal(await page.locator('#eaten').textContent(),'300');
+      assert.equal(await page.locator('#drops .drop.full').count(),4);
+      assert.ok(!(await page.evaluate(()=>window.cachedTransitions)).includes('0'));
+      assert.ok((await page.locator('#mealList').textContent()).includes('Сохранённый суп'));
     });
 
     await check('Pending session is not treated as signed out; no accidental guest write', { delaySession: true }, async ({ page }) => {

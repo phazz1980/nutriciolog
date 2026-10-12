@@ -123,3 +123,20 @@ test('stalled server times out and a later retry can recover without restarting'
   assert.deepEqual(plain(await h.store.loadDiaryEntries(meal.date)), [meal]);
   assert.equal(h.elements.get('dataNetworkNotice').hidden, true);
 });
+
+test('Firestore empty local snapshot cannot erase the durable diary; authoritative server reads are preferred', async () => {
+  const h = setup();
+  h.sdk.getDocs = async () => ({ docs: [{ id: meal.id, data: () => meal }] });
+  await h.store.loadDiaryEntries(meal.date);
+  h.sdk.getDocs = async () => ({ docs: [], metadata: { fromCache: true } });
+  await h.store.loadDiaryEntries(meal.date); await tick();
+  assert.deepEqual(plain(await h.store.loadDiaryEntries(meal.date)), [meal]);
+  await tick();
+  assert.equal(h.elements.get('dataNetworkNotice').hidden, false);
+  let usedServer = false;
+  h.sdk.getDocsFromServer = async () => { usedServer=true; return { docs:[{id:meal.id,data:()=>({...meal,calories:250})}], metadata:{fromCache:false} }; };
+  await h.store.loadDiaryEntries(meal.date); await tick();
+  assert.equal(usedServer,true);
+  assert.equal((await h.store.loadDiaryEntries(meal.date))[0].calories,250);
+  await tick();
+});

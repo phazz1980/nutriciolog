@@ -5,11 +5,12 @@ import { hasStore, has, call, loadProfile as loadStoredProfile, accountDefaults,
 import { toast, setText, showScreen, openModal, closeModal, openDialog, showAiDiagnostic, removeAiDiagnostic, setAiDebug, clearAiDebug, showCalculationResult } from "./ui.js";
 import { askAi, getAiToken, requestAiAdvice, clearErrors, clearServiceError, availability } from "./ai-client.js";
 import { initAiAvailability } from "./ai-availability.js";
-import { initDailyAdvice } from "./daily-advice.js?release=v0.4.5";
+import { initDailyAdvice } from "./daily-advice.js?release=v0.4.6";
 import { initAiQuota } from "./ai-quota.js";
 import { initHealthConnect, getHealthWeight } from "./health-connect.js";
 import "./wear-pairing.js";
 import "./native-appearance.js";
+import { initPullRefresh } from './pull-refresh.js';
 import { createMealTimeline } from "./timeline.js";
 import { preparePhoto, openPhotoPicker } from "./photo-picker.js";
 import { showPhotoRecognitionDialog, parseMealEstimate, fillMealForm, setFormNutrition, clearFormNutrition, readFormNutrition, toastPhotoTransfer } from "./photo.js";
@@ -1883,16 +1884,21 @@ function boot() {
   // Хранилище создаётся модулем firebase-client.js до этого модуля, поэтому
   // начальная загрузка запускается напрямую, а события обслуживают обновления.
   onAuthChanged(refreshProfileFromAccount);
+  let displayedDataOwner = window.nutritionStore?.getDisplayOwner?.() || '';
   onAuthChanged(() => {
-    // Account changes may clear the old view; ordinary network refreshes may not.
-    diaryLoadVersion++;
-    Object.assign(todayNutrition, { calories: 0, protein: 0, fat: 0, carbs: 0 });
-    clearDiaryView();
-    renderNutrition();
-    water = 0;
-    weightHistory = [];
-    renderWater();
-    renderWeightProgress();
+    const owner = window.nutritionStore?.getDisplayOwner?.() || '';
+    // Restoring the SAME account must not clear the already visible preview.
+    if (owner !== displayedDataOwner) {
+      diaryLoadVersion++;
+      Object.assign(todayNutrition, { calories: 0, protein: 0, fat: 0, carbs: 0 });
+      clearDiaryView();
+      renderNutrition();
+      water = 0;
+      weightHistory = [];
+      renderWater();
+      renderWeightProgress();
+      displayedDataOwner = owner;
+    }
     savedMealProducts = [];
     savedMealProductsUid = "";
     savedMealEstimate = null;
@@ -1921,6 +1927,10 @@ function boot() {
     renderDiaryForDate(selectedDiaryDate);
     loadWeightProgress();
     call('listProducts')?.catch(() => {});
+  });
+  initPullRefresh({
+    refresh: () => call('refreshData', selectedDiaryDate),
+    onResult: error => toast(error ? 'Нет связи с сервером. Сохранённые данные остаются на экране.' : 'Данные обновлены'),
   });
   window.addEventListener("online", clearErrors);
   window.addEventListener("online", clearServiceError);
