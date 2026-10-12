@@ -19,9 +19,11 @@ function startClient(db, storage, online) {
     removeEventListener: (...args) => events.removeEventListener(...args),
   };
   const context = vm.createContext({
-    window, document: { getElementById: id => id === 'firebaseStatus' ? status : null },
+    window, document: { getElementById: id => id === 'firebaseStatus' ? status : null, querySelector: () => null, addEventListener() {} },
     navigator: { onLine: online }, localStorage: storage,
-    Event, CustomEvent, crypto, setTimeout, clearTimeout, console, testDb: db,
+    Event, CustomEvent, crypto, setTimeout, clearTimeout,
+    setInterval: (fn, ms) => { const timer = setInterval(fn, ms); timer.unref(); return timer; },
+    console, testDb: db,
   });
   const source = readFileSync('firebase-client.js', 'utf8').replace(/\r\n/g, '\n');
   assert.equal(source.split('\ninitFirebase();\n').length, 2, 'Only bypass Firebase Auth bootstrap');
@@ -33,8 +35,8 @@ function localStorage() {
   const data = new Map();
   return {
     getItem: key => data.get(key) ?? null,
-    setItem: (key, value) => data.set(key, String(value)),
-    removeItem: key => data.delete(key),
+    setItem(key, value) { data.set(key, String(value)); Object.defineProperty(this, key, { value: String(value), enumerable: true, configurable: true, writable: true }); },
+    removeItem(key) { data.delete(key); delete this[key]; },
     key: index => [...data.keys()][index] ?? null,
     get length() { return data.size; },
   };
