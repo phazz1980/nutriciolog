@@ -337,7 +337,11 @@ export const serverTimestamp=()=>0;
           assert.equal(await page.locator('#photoSourcePicker').count(),0);
         }
       }
-      for(const id of ['protein','fat','carbs'])assert.equal(await page.locator('#'+id).getAttribute('placeholder'),null);
+      for(const id of ['protein','fat','carbs']){
+        assert.equal(await page.locator('#'+id).getAttribute('placeholder'),'—');
+        assert.equal(await page.locator('#'+id).inputValue(),'');
+        assert.equal(await page.locator('#'+id).getAttribute('required'),null);
+      }
     });
 
     await check('Quota shows server balance, handles exhaustion, isolates accounts and ignores late responses', {}, async ({ page }) => {

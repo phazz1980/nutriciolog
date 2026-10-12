@@ -97,6 +97,9 @@ export function fillMealForm(estimate) {
 }
 
 export function setFormNutrition(estimate) {
+  // AI, photos and the personal base always supply values for the whole portion.
+  const basis = document.getElementById("nutritionBasisPortion");
+  if (basis) basis.checked = true;
   const set = (id, value) => {
     const input = document.getElementById(id);
     if (input) input.value = value;
@@ -115,11 +118,14 @@ export function clearFormNutrition() {
 }
 
 export function readFormNutrition() {
+  const per100 = document.getElementById("nutritionBasis100")?.checked;
+  const ratio = per100 ? safeNumber(document.getElementById("portion")?.value) / 100 : 1;
+  const value = id => Number((safeNumber(document.getElementById(id)?.value) * ratio).toFixed(1));
   return {
-    calories: safeNumber(document.getElementById("calories")?.value),
-    protein: safeNumber(document.getElementById("protein")?.value),
-    fat: safeNumber(document.getElementById("fat")?.value),
-    carbs: safeNumber(document.getElementById("carbs")?.value),
+    calories: Math.round(safeNumber(document.getElementById("calories")?.value) * ratio),
+    protein: value("protein"),
+    fat: value("fat"),
+    carbs: value("carbs"),
   };
 }
 
