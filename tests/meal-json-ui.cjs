@@ -39,6 +39,8 @@ const slice = (code, start, end) => code.slice(code.indexOf(start), code.indexOf
     assert.equal(await page.locator('#mealName').inputValue(), '<img src=x onerror=alert(1)>');
     await page.evaluate(() => { window.copied = ''; Object.defineProperty(navigator, 'clipboard', { value: { writeText: async text => window.copied = text } }); });
     await page.locator('#mealJsonHelpButton').click();
+    assert.equal(await page.locator('#mealJsonHelp pre').count(), 0);
+    assert.ok((await page.locator('#mealJsonHelp').textContent()).includes('Полученный ответ вставьте'));
     await page.locator('#copyMealJsonPrompt').click();
     assert.ok((await page.evaluate(() => window.copied)).includes('"protein"'));
     assert.equal(await page.locator('#mealJsonCopyStatus').textContent(), 'Промпт скопирован');
@@ -48,6 +50,9 @@ const slice = (code, start, end) => code.slice(code.indexOf(start), code.indexOf
     }
     await page.keyboard.press('Escape');
     assert.equal(await page.locator('#mealJsonHelp').count(), 0);
+    assert.equal(await page.locator('#mealJsonHelpButton').textContent(), 'Спросить у другого ИИ');
+    assert.ok(await page.locator('#mealJsonHelpButton').evaluate(button => button.getBoundingClientRect().top >= document.getElementById('mealName').getBoundingClientRect().bottom));
+    assert.equal(await page.locator('#adviceJsonHelpButton').evaluate(button => button.previousElementSibling.id), 'askForm');
     console.log('JSON paste in both fields, draft safety, prompt copy, dialog close and widths: passed');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

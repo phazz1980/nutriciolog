@@ -5,7 +5,7 @@ import { hasStore, has, call, loadProfile as loadStoredProfile, accountDefaults,
 import { toast, setText, showScreen, openModal, closeModal, openDialog, showAiDiagnostic, removeAiDiagnostic, setAiDebug, clearAiDebug, showCalculationResult } from "./ui.js";
 import { askAi, getAiToken, requestAiAdvice, clearErrors, clearServiceError, availability } from "./ai-client.js";
 import { initAiAvailability } from "./ai-availability.js";
-import { initDailyAdvice } from "./daily-advice.js?release=v0.4.3";
+import { initDailyAdvice } from "./daily-advice.js?release=v0.4.4";
 import { initAiQuota } from "./ai-quota.js";
 import { initHealthConnect, getHealthWeight } from "./health-connect.js";
 import "./wear-pairing.js";
@@ -209,15 +209,14 @@ function clearDiaryView() {
 async function loadDiary() {
   if (!has("loadDiaryEntries")) return;
   const version = ++diaryLoadVersion;
-  todayNutrition.calories = 0;
-  todayNutrition.protein = 0;
-  todayNutrition.fat = 0;
-  todayNutrition.carbs = 0;
-  clearDiaryView();
-  renderNutrition();
   try {
     const entries = await call("loadDiaryEntries", todayKey());
     if (version !== diaryLoadVersion) return;
+    todayNutrition.calories = 0;
+    todayNutrition.protein = 0;
+    todayNutrition.fat = 0;
+    todayNutrition.carbs = 0;
+    clearDiaryView();
     const sorted = [...(entries || [])].sort((left, right) => mealTypeRank(left.mealType) - mealTypeRank(right.mealType));
     for (const entry of sorted) addNutrition(todayNutrition, entry);
     renderNutrition();
@@ -282,13 +281,14 @@ async function renderDiaryForDate(date) {
     return;
   }
   const list = element("mealList");
-  list.replaceChildren();
   const hint = document.createElement("p");
   hint.className = "hello";
   hint.textContent = "Просмотр сохранённого рациона";
-  list.append(hint);
+  const version = ++diaryLoadVersion;
   try {
     const entries = await call("loadDiaryEntries", date) || [];
+    if (version !== diaryLoadVersion || date !== selectedDiaryDate) return;
+    list.replaceChildren(hint);
     if (!entries.length) {
       const empty = document.createElement("section");
       empty.className = "card";
@@ -340,19 +340,17 @@ function saveWaterLog() {
 
 async function loadWater() {
   const date = todayKey();
+  const owner = window.nutritionStore?.getDisplayOwner?.();
   waterLogDate = date;
   // Bind the already compact markup without waiting for account/network reads.
   renderWater();
   try {
     const saved = await call("loadWaterLog", date);
-    if (waterLogDate !== date || todayKey() !== date) return;
+    if (waterLogDate !== date || todayKey() !== date || owner !== window.nutritionStore?.getDisplayOwner?.()) return;
     water = Math.max(0, Math.min(8, Math.round(Number(saved?.glasses) || 0)));
     renderWater();
   } catch {
-    if (waterLogDate === date) {
-      water = 0;
-      renderWater();
-    }
+    // A failed refresh must not erase the last displayed water log.
   }
 }
 
@@ -653,12 +651,13 @@ function renderWeightProgress() {
 
 async function loadWeightProgress() {
   if (!has("loadWeightEntries")) return;
+  const owner = window.nutritionStore?.getDisplayOwner?.();
   try {
-    weightHistory = await call("loadWeightEntries") || [];
+    const entries = await call("loadWeightEntries") || [];
+    if (owner !== window.nutritionStore?.getDisplayOwner?.()) return;
+    weightHistory = entries;
     renderWeightProgress();
   } catch {
-    weightHistory = [];
-    renderWeightProgress();
     toast("Не удалось загрузить прогресс веса.");
   }
 }
@@ -768,9 +767,8 @@ function importMealJson(text, { fromAdvice = false, reportError = true } = {}) {
 function showMealJsonHelp() {
   const { dialog, close } = openDialog({
     id: "mealJsonHelp", labelledBy: "mealJsonHelpTitle",
-    html: '<section class="sheet"><h2 id="mealJsonHelpTitle">Блюдо из JSON</h2><p>Напишите своему ИИ название и описание блюда, затем вставьте скопированный промпт без изменений. Если порция не указана, ИИ оценит обычную порцию. Готовый JSON вставьте в название блюда или поле «Совет»: данные автоматически появятся в форме.</p><p class="hello">БЖУ и калории указываются на всю порцию. Расчёт ИИ приблизительный: проверьте его. Запись появится в дневнике только после «Сохранить».</p><pre class="meal-json-prompt"></pre><button type="button" class="secondary" id="copyMealJsonPrompt">Скопировать промпт</button><p role="status" id="mealJsonCopyStatus"></p><button type="button" class="primary" data-close>Понятно</button></section>',
+    html: '<section class="sheet"><h2 id="mealJsonHelpTitle">Спросить у другого ИИ</h2><p>Напишите своему ИИ название и описание блюда, затем вставьте скопированный промпт без изменений. Если порция не указана, ИИ оценит обычную порцию. Полученный ответ вставьте в название блюда или поле «Совет»: данные автоматически появятся в форме.</p><p class="hello">БЖУ и калории указываются на всю порцию. Расчёт ИИ приблизительный: проверьте его. Запись появится в дневнике только после «Сохранить».</p><button type="button" class="secondary" id="copyMealJsonPrompt">Скопировать промпт</button><p role="status" id="mealJsonCopyStatus"></p><button type="button" class="primary" data-close>Понятно</button></section>',
   });
-  dialog.querySelector("pre").textContent = MEAL_JSON_PROMPT;
   dialog.querySelector("[data-close]").onclick = close;
   const copy = dialog.querySelector("#copyMealJsonPrompt");
   copy.onclick = async () => {
@@ -778,11 +776,19 @@ function showMealJsonHelp() {
       await navigator.clipboard.writeText(MEAL_JSON_PROMPT);
       dialog.querySelector("#mealJsonCopyStatus").textContent = "Промпт скопирован";
     } catch {
-      const selection = window.getSelection();
-      const range = document.createRange();
-      range.selectNodeContents(dialog.querySelector("pre"));
-      selection.removeAllRanges(); selection.addRange(range);
-      dialog.querySelector("#mealJsonCopyStatus").textContent = "Не удалось скопировать автоматически. Текст выделен — скопируйте его вручную.";
+      // Legacy clipboard fallback keeps the prompt out of the visible dialog.
+      const input = document.createElement("textarea");
+      input.value = MEAL_JSON_PROMPT;
+      input.className = "sr-only";
+      input.setAttribute("aria-hidden", "true");
+      dialog.append(input);
+      let copied = false;
+      try { input.select(); copied = document.execCommand("copy"); } catch {}
+      input.remove();
+      copy.focus();
+      dialog.querySelector("#mealJsonCopyStatus").textContent = copied
+        ? "Промпт скопирован"
+        : "Не удалось скопировать. Разрешите доступ к буферу обмена и попробуйте ещё раз.";
     }
   };
   copy.focus();
@@ -1854,6 +1860,15 @@ function boot() {
   // начальная загрузка запускается напрямую, а события обслуживают обновления.
   onAuthChanged(refreshProfileFromAccount);
   onAuthChanged(() => {
+    // Account changes may clear the old view; ordinary network refreshes may not.
+    diaryLoadVersion++;
+    Object.assign(todayNutrition, { calories: 0, protein: 0, fat: 0, carbs: 0 });
+    clearDiaryView();
+    renderNutrition();
+    water = 0;
+    weightHistory = [];
+    renderWater();
+    renderWeightProgress();
     savedMealProducts = [];
     savedMealProductsUid = "";
     savedMealEstimate = null;
@@ -1868,6 +1883,21 @@ function boot() {
   onStoreReady(loadWeightProgress);
   onAuthChanged(loadWeightProgress);
   onStoreReady(() => renderDiaryForDate(selectedDiaryDate));
+  window.addEventListener('nutrition-data-updated', event => {
+    if (event.detail?.uid !== window.nutritionStore?.getDisplayOwner?.()) return;
+    const { collection, scope } = event.detail;
+    if (collection === 'foodDiary' && scope === selectedDiaryDate) renderDiaryForDate(selectedDiaryDate);
+    if (collection === 'waterLogs' && scope === todayKey()) loadWater();
+    if (collection === 'weightEntries') loadWeightProgress();
+    if (collection === 'products') savedMealProducts = [];
+  });
+  window.addEventListener('nutrition-data-retry', () => {
+    refreshProfileFromAccount();
+    loadWater();
+    renderDiaryForDate(selectedDiaryDate);
+    loadWeightProgress();
+    call('listProducts')?.catch(() => {});
+  });
   window.addEventListener("online", clearErrors);
   window.addEventListener("online", clearServiceError);
 
@@ -1886,6 +1916,7 @@ function boot() {
   // preview показывается сразу, синхронизация с Firebase идёт следом.
   initProfile();
   loadWater();
+  loadWeightProgress();
   renderDiaryForDate(selectedDiaryDate);
   renderWeightProgress();
   startDayWatchers();
