@@ -31,6 +31,114 @@ const profileCacheKey = uid => key(`account:${uid}:profile:v1`);
 const latestProfileCacheKey = key("account:latest-profile:v1");
 const pendingWritesKey = uid => key(`account:${uid}:pending-writes:v1`);
 let pendingFlush = null;
+const displayOwnerKey = key('account:display-owner:v1');
+const readRefreshes = new Map();
+const failedReads = new Set();
+let readRevision = 0;
+
+function publishReadStatus() {
+  let notice = document.getElementById('dataNetworkNotice');
+  if (!notice) {
+    const phone = document.querySelector('.phone');
+    if (!phone) return;
+    notice = document.createElement('p');
+    notice.id = 'dataNetworkNotice';
+    notice.className = 'notice';
+    notice.setAttribute('role', 'status');
+    notice.setAttribute('aria-live', 'polite');
+    phone.prepend(notice);
+  }
+  notice.hidden = navigator.onLine !== false && !failedReads.size;
+  notice.textContent = 'Нет связи с сервером. Показаны сохранённые данные. Обновим их после восстановления связи.';
+}
+
+function displayOwner() {
+  if (user?.uid) return user.uid;
+  if (!configured || guestMode || authState === 'ready') return '';
+  try { return localStorage.getItem(displayOwnerKey) || cachedProfilePreview()?.uid || ''; }
+  catch { return ''; }
+}
+
+const readCacheKey = (uid, collection, scope = '') => key(`account:${uid}:read:${collection}:${scope}:v1`);
+function readCache(uid, collection, scope = '') {
+  try {
+    const entry = JSON.parse(localStorage.getItem(readCacheKey(uid, collection, scope)));
+    const valid = collection === 'waterLogs'
+      ? entry?.data === null || (entry?.data && typeof entry.data === 'object' && !Array.isArray(entry.data))
+      : Array.isArray(entry?.data) && entry.data.every(value => value && typeof value === 'object' && !Array.isArray(value));
+    return entry?.version === 1 && valid ? entry : null;
+  } catch { return null; }
+}
+function cacheRead(uid, collection, scope, data) {
+  // Only application display fields, never auth objects, tokens or photographs.
+  const allowed = ['id','date','title','mealType','portion','calories','protein','fat','carbs','source','weight','glasses','normalizedName','unitWeight','aiClarification'];
+  const clean = value => value && Object.fromEntries(allowed.filter(field => Object.hasOwn(value, field)).map(field => [field, value[field]]));
+  const safe = Array.isArray(data) ? data.map(clean).filter(Boolean) : clean(data);
+  try { localStorage.setItem(readCacheKey(uid, collection, scope), JSON.stringify({ version: 1, data: safe })); } catch {}
+}
+function cachedReadValue(uid, collection, scope, entry) {
+  if (collection === 'waterLogs') return overlayPendingDocument(collection, scope, entry?.data ?? null, uid);
+  const values = overlayPendingCollection(collection, Array.isArray(entry?.data) ? entry.data : [], uid);
+  return collection === 'foodDiary' ? values.filter(value => value.date === scope) : values;
+}
+function updateReadCache(uid, action, collection, id, value) {
+  if (!['foodDiary','waterLogs','weightEntries','products'].includes(collection)) return;
+  readRevision++;
+  if (collection === 'waterLogs') { cacheRead(uid, collection, id, action === 'delete' ? null : value); return; }
+  if (collection === 'foodDiary' && action === 'delete') {
+    // A deletion can target a day not currently on screen.
+    try {
+      const prefix = key(`account:${uid}:read:foodDiary:`).slice(0, -1);
+      for (const storageKey of Object.keys(localStorage).filter(name => name.startsWith(prefix))) {
+        const scope = storageKey.slice(prefix.length).replace(/:v1:$/, '');
+        const entry = readCache(uid, collection, scope);
+        if (entry) cacheRead(uid, collection, scope, entry.data.filter(item => item.id !== id));
+      }
+    } catch {}
+    return;
+  }
+  const scope = collection === 'foodDiary' ? String(value?.date || '') : '';
+  const entry = readCache(uid, collection, scope);
+  const values = (Array.isArray(entry?.data) ? entry.data : []).filter(item => item.id !== id);
+  if (action !== 'delete') values.push({ ...value, id });
+  cacheRead(uid, collection, scope, values);
+}
+async function localFirstRead(collection, scope, fetcher) {
+  const uid = displayOwner();
+  const cached = uid ? readCache(uid, collection, scope) : null;
+  const pending = uid ? pendingWrites(uid).some(item => item.collection === collection) : false;
+  const refreshKey = `${uid}:${collection}:${scope}`;
+  let refresh = readRefreshes.get(refreshKey);
+  if (!refresh) {
+    const revision = readRevision;
+    refresh = (async () => {
+      await waitForAccount();
+      const generation = profileGeneration;
+      if (uid && user?.uid !== uid) return cachedReadValue(uid, collection, scope, cached);
+      // A stalled Firestore connection must not lock all future retries forever.
+      const result = await withAuthTimeout(fetcher(), 'unavailable');
+      if (uid && (displayOwner() !== uid || generation !== profileGeneration || revision !== readRevision)) {
+        return cachedReadValue(uid, collection, scope, readCache(uid, collection, scope));
+      }
+      if (uid) cacheRead(uid, collection, scope, result);
+      failedReads.delete(refreshKey);
+      publishReadStatus();
+      if ((cached || pending) && JSON.stringify(cached?.data) !== JSON.stringify(result)) window.dispatchEvent(new CustomEvent('nutrition-data-updated', { detail: { uid, collection, scope } }));
+      return result;
+    })().catch(error => {
+      if (displayOwner() === uid && (isTemporaryFirestoreError(error) || ['auth/unavailable','auth/loading','auth/network-request-failed'].includes(error?.code))) {
+        failedReads.add(refreshKey); publishReadStatus();
+      }
+      throw error;
+    }).finally(() => readRefreshes.delete(refreshKey));
+    readRefreshes.set(refreshKey, refresh);
+  }
+  if (cached || pending) {
+    refresh.catch(() => {});
+    return cachedReadValue(uid, collection, scope, cached);
+  }
+  return refresh;
+}
 
 // Firestore may be temporarily unavailable while the user is travelling or
 // switching networks. Keep a small, UID-scoped outbox locally: it contains
@@ -61,7 +169,9 @@ function queueWrite(action, collection, id, value, uid = user?.uid) {
   if (!uid) return false;
   const writes = pendingWrites(uid).filter(item => item.collection !== collection || item.id !== id);
   writes.push({ opId: crypto.randomUUID(), action, collection, id, ...(action === "set" ? { value } : {}) });
-  return storePendingWrites(uid, writes);
+  const stored = storePendingWrites(uid, writes);
+  if (stored) updateReadCache(uid, action, collection, id, value);
+  return stored;
 }
 
 function pendingWriteFor(collection, id, uid = user?.uid) {
@@ -392,6 +502,12 @@ async function connectFirebase() {
   await new Promise((resolve, reject) => authSdk.onAuthStateChanged(auth, async current => {
     if (current && !user && signInAttempt) await signInAttempt.catch(() => {});
     if (user?.uid && user.uid !== current?.uid) removeCachedProfile(user.uid);
+    try {
+      if (current?.uid) localStorage.setItem(displayOwnerKey, current.uid);
+      else localStorage.removeItem(displayOwnerKey);
+    } catch {}
+    failedReads.clear();
+    publishReadStatus();
     profileGeneration++;
     profileRefresh = null;
     profileSaving = false;
@@ -588,7 +704,7 @@ function normalizeProductName(name) {
   return String(name || "").normalize("NFKD").toLocaleLowerCase("ru-RU").replace(/[^a-zа-яё0-9]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 120);
 }
 
-async function loadProduct(name) {
+async function fetchProduct(name) {
   await waitForAccount();
   const normalizedName = normalizeProductName(name);
   if (!normalizedName) return null;
@@ -599,12 +715,11 @@ async function loadProduct(name) {
     const snapshot = await getDoc(doc(db, "users", user.uid, "products", normalizedName));
     return overlayPendingDocument("products", normalizedName, snapshot.exists() ? snapshot.data() : null);
   } catch (error) {
-    if (isTemporaryFirestoreError(error)) return overlayPendingDocument("products", normalizedName, null);
     throw error;
   }
 }
 
-async function listProducts() {
+async function fetchProducts() {
   await waitForAccount();
   if (!configured || !user || !db) {
     const prefix = key("products:");
@@ -622,8 +737,6 @@ async function listProducts() {
     return overlayPendingCollection("products", snapshot.docs.map(document => ({ ...document.data(), id: document.id })))
       .filter(product => typeof product?.title === "string" && product.title.trim());
   } catch (error) {
-    if (isTemporaryFirestoreError(error)) return overlayPendingCollection("products", [])
-      .filter(product => typeof product?.title === "string" && product.title.trim());
     throw error;
   }
 }
@@ -674,7 +787,7 @@ async function deleteProduct(name) {
   }
 }
 
-async function loadWaterLog(date) {
+async function fetchWaterLog(date) {
   await waitForAccount();
   const safeDate = String(date || "");
   if (!safeDate) return null;
@@ -687,12 +800,11 @@ async function loadWaterLog(date) {
     const snapshot = await getDoc(doc(db, "users", user.uid, "waterLogs", safeDate));
     return overlayPendingDocument("waterLogs", safeDate, snapshot.exists() ? snapshot.data() : null);
   } catch (error) {
-    if (isTemporaryFirestoreError(error)) return overlayPendingDocument("waterLogs", safeDate, null);
     throw error;
   }
 }
 
-async function loadDiaryEntries(date) {
+async function fetchDiaryEntries(date) {
   await waitForAccount();
   if (!configured || !user || !db) {
     const prefix = key("foodDiary");
@@ -723,13 +835,13 @@ async function loadDiaryEntries(date) {
             .filter(entry => entry?.date === date);
         }
       } catch { /* The normal offline fallback below keeps pending local edits. */ }
-      return overlayPendingCollection("foodDiary", []).filter(entry => entry?.date === date);
+      throw error;
     }
     throw error;
   }
 }
 
-async function loadWeightEntries() {
+async function fetchWeightEntries() {
   await waitForAccount();
   if (!configured || !user || !db) {
     const prefix = key("weightEntries");
@@ -746,13 +858,23 @@ async function loadWeightEntries() {
     return overlayPendingCollection("weightEntries", snapshot.docs.map(document => ({ ...document.data(), id: document.id })))
       .filter(entry => entry?.date && Number.isFinite(Number(entry.weight)));
   } catch (error) {
-    if (isTemporaryFirestoreError(error)) return overlayPendingCollection("weightEntries", [])
-      .filter(entry => entry?.date && Number.isFinite(Number(entry.weight)));
     throw error;
   }
 }
 
+const loadDiaryEntries = date => localFirstRead('foodDiary', date, () => fetchDiaryEntries(date));
+const loadWaterLog = date => localFirstRead('waterLogs', date, () => fetchWaterLog(date));
+const loadWeightEntries = () => localFirstRead('weightEntries', '', fetchWeightEntries);
+const listProducts = () => localFirstRead('products', '', fetchProducts);
+async function loadProduct(name) {
+  const normalized = normalizeProductName(name);
+  if (!normalized) return null;
+  const products = await listProducts();
+  return products.find(item => (item.normalizedName || normalizeProductName(item.title)) === normalized) || null;
+}
+
 window.nutritionStore = {
+  getDisplayOwner: displayOwner,
   saveProfile: profile => save("profile", "main", profile),
   loadProfile,
   getAccountProfileDefaults: () => ({ uid: user?.uid || "", name: user?.displayName || "", email: user?.email || "", photoUrl: "" }),
@@ -840,5 +962,16 @@ window.addEventListener("online", () => {
   if (authState === "error" && !appModuleFailed) initFirebase();
   if (user && db) refreshAccountProfile(user.uid).catch(() => {});
   flushPendingWrites().catch(() => {});
+  publishReadStatus();
+  window.dispatchEvent(new Event('nutrition-data-retry'));
 });
+window.addEventListener('offline', publishReadStatus);
+window.addEventListener('focus', () => window.dispatchEvent(new Event('nutrition-data-retry')));
+document.addEventListener('visibilitychange', () => { if (!document.hidden) window.dispatchEvent(new Event('nutrition-data-retry')); });
+setInterval(() => {
+  if (!failedReads.size || document.hidden || navigator.onLine === false) return;
+  if (authState === 'error' && !appModuleFailed) initFirebase();
+  window.dispatchEvent(new Event('nutrition-data-retry'));
+}, 30000);
+publishReadStatus();
 updateStatus();

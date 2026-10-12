@@ -35,7 +35,7 @@ export const getDoc=async parts=>{
   }
   return {exists:()=>false};
 };
-export const getDocs=async parts=>({docs:(parts[3]==='products' ? window.test.products||[] : []).map((item,i)=>({id:String(i),data:()=>item}))});
+export const getDocs=async parts=>{if(window.test.failRead)throw Object.assign(new Error('Offline'),{code:'unavailable'});return {docs:(parts[3]==='products' ? window.test.products||[] : []).map((item,i)=>({id:String(i),data:()=>item}))}};
 export const setDoc=async(...args)=>{if(window.test.failSave){const error=new Error('Offline');error.code=window.test.failSaveCode||'unavailable';throw error}window.test.writes.push(args)};
 export const deleteDoc=async()=>{};
 export const serverTimestamp=()=>0;
@@ -67,6 +67,13 @@ export const serverTimestamp=()=>0;
         // The app renders provider-dependent UI, so mock users need the fields Firebase always sends.
         window.test.prepareUser = user => user && { providerData: [], emailVerified: true, ...user };
         localStorage.setItem('my-nutritionist:profile:main:', JSON.stringify({ name: 'Guest' }));
+        if(opts.cachedOffline) {
+          const now=new Date(),date=[now.getFullYear(),String(now.getMonth()+1).padStart(2,'0'),String(now.getDate()).padStart(2,'0')].join('-');
+          localStorage.setItem('my-nutritionist:account:display-owner:v1:','offline-user');
+          localStorage.setItem('my-nutritionist:account:offline-user:read:foodDiary:'+date+':v1:',JSON.stringify({version:1,data:[{id:'cached-meal',date,title:'Сохранённый суп',mealType:'Обед',portion:250,calories:300,protein:10,fat:10,carbs:40}]}));
+          localStorage.setItem('my-nutritionist:account:offline-user:read:waterLogs:'+date+':v1:',JSON.stringify({version:1,data:{date,glasses:4}}));
+          localStorage.setItem('my-nutritionist:account:offline-user:read:weightEntries::v1:',JSON.stringify({version:1,data:[{id:date,date,weight:85}]}));
+        }
       }, options);
       let failImports = Boolean(options.failImports);
       await page.route('https://**/*', async route => {
@@ -92,6 +99,18 @@ export const serverTimestamp=()=>0;
       try { await run(state); assert.deepEqual(state.errors, []); console.log('PASS', name); }
       finally { await state.context.close(); }
     }
+
+    await check('Offline startup renders cached diary/water before SDK and displays network notice', {cachedOffline:true,failImports:true}, async ({page}) => {
+      await page.waitForFunction(()=>document.getElementById('eaten').textContent==='300');
+      assert.ok((await page.locator('#mealList').textContent()).includes('Сохранённый суп'));
+      assert.equal(await page.locator('#drops .drop.full').count(),4);
+      await page.locator('#dataNetworkNotice').waitFor({state:'visible'});
+      assert.ok((await page.locator('#dataNetworkNotice').textContent()).includes('Нет связи'));
+      await page.evaluate(()=>window.dispatchEvent(new Event('nutrition-data-retry')));
+      await page.waitForTimeout(300);
+      assert.equal(await page.locator('#eaten').textContent(),'300');
+      assert.equal(await page.locator('#drops .drop.full').count(),4);
+    });
 
     await check('Pending session is not treated as signed out; no accidental guest write', { delaySession: true }, async ({ page }) => {
       await page.waitForFunction(() => Boolean(window.test.setUser));
