@@ -9,6 +9,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(HealthConnectPlugin.class);
         registerPlugin(CredentialAutofillPlugin.class);
+        registerPlugin(AppearancePlugin.class);
         super.onCreate(savedInstanceState);
         if (getBridge() != null) {
             getBridge().getWebView().setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_YES);

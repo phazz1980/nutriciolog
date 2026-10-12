@@ -455,7 +455,9 @@ function updateAuthUI() {
     if (panel.parentElement !== nameCard) nameCard.append(panel);
   } else {
     panel.className = 'card';
-    if (panel.parentElement !== screen) screen.insertBefore(panel, document.getElementById('profileDocuments'));
+    // Login belongs at the top, not below goals, quota, theme and documents.
+    const firstCard = screen.querySelector('.card:not(#authPanel)') || document.getElementById('profileDocuments');
+    if (panel.parentElement !== screen || panel.nextElementSibling !== firstCard) screen.insertBefore(panel, firstCard);
   }
   if (!configured) { panel.innerHTML = '<b>Гостевой режим</b><p class="hello">Данные остаются на этом устройстве. После настройки Firebase здесь появится вход и синхронизация.</p><button class="secondary" type="button" disabled>Войти после настройки Firebase</button>'; return; }
   if (authState !== "ready") {

@@ -17,6 +17,7 @@ const render = source.slice(source.indexOf('function updateAuthUI()'), source.in
       new Function('const configured=true, user=null, authState="ready";let signInAttempt=null, authMessage="";'+render+';window.testRenderAuth=(pending,error="")=>{signInAttempt=pending?Promise.resolve():null;authMessage=error;updateAuthUI();};updateAuthUI();')();
     }, render);
     assert.equal(await page.locator('#googleSignIn').count(),0);
+    assert.equal(await page.locator('#authPanel').evaluate(node=>node.nextElementSibling.id),'profileDocuments');
     assert.ok(!source.includes('GoogleAuthProvider'));
     assert.ok(!fs.readFileSync(path.join(root,'js/app.js'),'utf8').includes('Войти через Google'));
     await page.locator('#emailAuthEmail').fill('test@example.com');
