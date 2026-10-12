@@ -6,9 +6,10 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
 const root=path.resolve(__dirname,'..');
 const source=fs.readFileSync(path.join(root,'js/app.js'),'utf8');
 const render=source.slice(source.indexOf('function renderWater()'),source.indexOf('function ensureWaterDate()'));
+const waterMarkup=fs.readFileSync(path.join(root,'index.html'),'utf8').match(/<section class="card water">[\s\S]*?<\/section>/)[0];
 const server=http.createServer((req,res)=>{
   res.setHeader('Content-Type',req.url==='/styles.css'?'text/css; charset=utf-8':'text/html; charset=utf-8');
-  res.end(req.url==='/styles.css'?fs.readFileSync(path.join(root,'styles.css')):'<link rel="stylesheet" href="/styles.css"><main class="phone"><section id="today"><div class="section-head"><h2>Вода</h2><button id="waterText">1 из 8 стаканов</button></div><section class="card activity-card"><h2>Активность</h2></section><section class="card water"><div class="drops" id="drops"></div><button class="secondary" id="addWaterButton">+ стакан</button></section></section></main>');
+  res.end(req.url==='/styles.css'?fs.readFileSync(path.join(root,'styles.css')):'<link rel="stylesheet" href="/styles.css"><main class="phone"><section id="today"><section class="card activity-card"><h2>Активность</h2></section>'+waterMarkup+'</section></main>');
 });
 (async()=>{
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -16,6 +17,16 @@ const server=http.createServer((req,res)=>{
   try{
     const page=await browser.newPage();
     await page.goto(`http://127.0.0.1:${server.address().port}`);
+    // Use production markup and check BEFORE renderWater or storage completes.
+    assert.equal(await page.locator('#waterText').count(),0);
+    assert.equal(await page.locator('.water-title').count(),1);
+    assert.equal(await page.locator('.drop').count(),8);
+    assert.equal(await page.locator('#addWaterButton').textContent(),'+');
+    for(const width of [320,390,430,1440]) {
+      await page.setViewportSize({width,height:844});
+      assert.ok(await page.locator('.water').evaluate(card=>card.scrollWidth<=card.clientWidth),`Initial layout has no overflow at ${width}`);
+      assert.ok(await page.locator('.water').evaluate(card=>card.clientHeight<70));
+    }
     await page.evaluate(render=>{window.water=1;window.element=id=>document.getElementById(id);window.toggleWater=index=>{window.water=index+1;window.renderWater()};window.renderWater=new Function(render+';return renderWater')();window.renderWater();window.renderWater();},render);
     assert.equal(await page.locator('#waterText').count(),0);
     assert.equal(await page.locator('.water-title').count(),1);

@@ -1,10 +1,33 @@
-export const APP_VERSION = "v0.4.2";
-export const RELEASE_DATE = "11 октября 2026";
+export const APP_VERSION = "v0.4.3";
+export const RELEASE_DATE = "12 октября 2026";
 
 export const MEAL_TYPES = ["Завтрак", "Обед", "Ужин", "Перекус"];
+
+export const MEAL_JSON_PROMPT = `Рассчитай калории и БЖУ блюда, описанного в тексте перед этой инструкцией. Используй указанные там ингредиенты, количества, способ приготовления и вес готовой порции. Если вес или количество не указаны, оцени обычную порцию этого блюда. Верни только один JSON-объект без Markdown и пояснений в формате {"title":"Название блюда","portion":250,"calories":350,"protein":25,"fat":10,"carbs":40}. Это пример структуры: замени название и все числа результатом расчёта для описанного блюда. portion — вес готовой порции в граммах. calories, protein, fat и carbs — значения для всей этой порции, не на 100 г. БЖУ — в граммах. Все числовые поля должны быть числами, без единиц измерения. Если название блюда отсутствует или описание не позволяет понять, что это за блюдо, попроси уточнение вместо JSON.`;
+
+// null means ordinary text; malformed JSON is reported without changing the draft.
+export function parseMealJson(text) {
+  const raw = String(text || "").trim();
+  if (!raw.startsWith("{") && !/^```(?:json)?\s*\{/i.test(raw)) return null;
+  const error = () => new Error('Неверный JSON блюда. Нужны title, portion, protein, fat, carbs; calories необязательно. Числа — без единиц, БЖУ — на всю порцию.');
+  let value;
+  try { value = JSON.parse(raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")); } catch { throw error(); }
+  if (!value || Array.isArray(value) || typeof value !== "object") throw error();
+  const number = (key, max, positive = false) => {
+    const n = value[key];
+    if (typeof n !== "number" || !Number.isFinite(n) || n < 0 || (positive && n === 0) || n > max) throw error();
+    return n;
+  };
+  if (typeof value.title !== "string" || !value.title.trim() || value.title.trim().length > 200) throw error();
+  const portion = number("portion", 10000, true);
+  const protein = number("protein", 1000), fat = number("fat", 1000), carbs = number("carbs", 1000);
+  const calories = value.calories === undefined ? Math.round(protein * 4 + fat * 9 + carbs * 4) : number("calories", 10000);
+  if (calories > 10000) throw error();
+  return { title: value.title.trim(), portion, calories, protein, fat, carbs };
+}
 export const MEAL_ICONS = { Завтрак: "☀️", Обед: "🍽️", Ужин: "🌙", Перекус: "🍏" };
 
-export const DEFAULT_PROFILE = { name: "Анна", age: 27, height: 165, weight: 65.4, targetWeight: 62, goal: "Похудение", calories: 1800 };
+export const DEFAULT_PROFILE = { name: "", age: 27, height: 165, weight: 65.4, targetWeight: 62, goal: "Похудение", calories: 1800 };
 
 export const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
 export const AI_TIMEOUT_MS = 60_000;

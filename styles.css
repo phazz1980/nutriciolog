@@ -220,8 +220,14 @@ button.meal-calculate-action:not(:disabled):hover,button.meal-calculate-action:n
 #firebaseStatus[hidden] { display:none; }
 
 /* Device-local appearance; shared by Web and the Android bundle. */
-.theme-settings .setting{gap:12px;flex-wrap:wrap;padding:2px 0}
-#themePreference{max-width:100%;min-height:44px;padding:8px 10px;border:1px solid var(--line);border-radius:12px;background:var(--paper);color:var(--ink);font-size:16px}
+#themePreference{margin:0;padding:0;border:0;min-width:0}
+#themePreference legend{padding:0;margin-bottom:12px;font-weight:700}
+.theme-switch{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;padding:4px;border:1px solid var(--line);border-radius:14px;background:var(--paper)}
+.theme-switch label{position:relative;min-width:0;cursor:pointer}
+.theme-switch input{position:absolute;opacity:0;width:1px;height:1px;margin:0}
+.theme-switch span{display:flex;justify-content:center;align-items:center;min-height:44px;padding:8px 4px;border-radius:10px;color:var(--muted);font-size:13px}
+.theme-switch input:checked+span{background:var(--mint);color:var(--green);font-weight:700}
+.theme-switch input:focus-visible+span{outline:2px solid var(--green);outline-offset:1px}
 :root[data-theme="dark"]{--green:#72d6ac;--mint:#203d31;--orange:#ffb275;--ink:#e4f0e9;--muted:#a4b9ad;--line:#34483e;--paper:#000}
 [data-theme="dark"] body{background:var(--paper)}
 [data-theme="dark"] .bottom{background:var(--paper)}
@@ -246,3 +252,4 @@ button.meal-calculate-action:not(:disabled):hover,button.meal-calculate-action:n
 [data-theme="dark"] button.meal-suggestion-delete:hover,[data-theme="dark"] button.meal-suggestion-delete:focus-visible{background:#502b2b}
 [data-theme="dark"] .nav[data-nav="assistant"] span{color:var(--green)}
 [data-theme="dark"] .toast{background:#dcece2;color:#14231e}
+.meal-json-prompt { white-space:pre-wrap; overflow-wrap:anywhere; font:inherit; font-size:14px; padding:12px; background:var(--bg); border:1px solid var(--line); border-radius:12px; user-select:text; }

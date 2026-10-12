@@ -155,6 +155,11 @@ export const serverTimestamp=()=>0;
       await page.locator('#emailRegister').waitFor();
       assert.equal(await page.locator('.card.profile #authPanel').count(),0);
       assert.equal(await page.locator('#profile > #authPanel').count(),1);
+        assert.equal(await page.locator('#authPanel').evaluate(node=>node.nextElementSibling.matches('.card.profile')),true);
+        await page.waitForFunction(()=>document.getElementById('profileName').textContent==='Guest');
+        assert.ok(!(await page.locator('#profileSummary').textContent()).includes('65,4'));
+        await page.evaluate(()=>{localStorage.removeItem('my-nutritionist:profile:main:');window.test.setUser(null);});
+        await page.waitForFunction(()=>document.getElementById('profileName').textContent==='Гостевой режим');
       assert.equal(await page.locator('#firebaseStatus').isHidden(),false);
     });
 

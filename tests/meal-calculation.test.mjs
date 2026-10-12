@@ -19,6 +19,7 @@ for (const selected of [false, true]) {
     let reachedCalculation = false;
     const context = vm.createContext({
       mealCalculationBusy: false,
+      importMealJson: () => false,
       savedMealEstimate: selected ? { title: "молоко 3,5" } : null,
       savedMealProducts: [{ title: "Молочный коктейль" }],
       matchingProducts: () => [{ title: "Молочный коктейль" }],

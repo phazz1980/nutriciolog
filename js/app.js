@@ -1,13 +1,15 @@
 import { parsePortionDescription, matchingProducts, APP_VERSION, RELEASE_DATE, DEFAULT_PROFILE, MEAL_TYPES, MAX_PHOTO_BYTES, safeNumber, formatNumber, firstName, normalizeTitle, mealTypeRank, mealTypeIcon, nutritionTargets, scaleNutrition, addNutrition, subtractNutrition, macroFields } from "./core.js";
 import { todayKey, dateKeyFor, diaryTitleForDate, formatDayTitle, formatShortDate, minutesUntilNextLocalDay } from "./date.js";
+import { parseMealJson, MEAL_JSON_PROMPT } from "./core.js";
 import { hasStore, has, call, loadProfile as loadStoredProfile, accountDefaults, cachedProfilePreview, getAuthStatus, onAuthChanged, onAuthStatus, onStoreReady, onProfileUpdated } from "./storage.js";
 import { toast, setText, showScreen, openModal, closeModal, openDialog, showAiDiagnostic, removeAiDiagnostic, setAiDebug, clearAiDebug, showCalculationResult } from "./ui.js";
 import { askAi, getAiToken, requestAiAdvice, clearErrors, clearServiceError, availability } from "./ai-client.js";
 import { initAiAvailability } from "./ai-availability.js";
-import { initDailyAdvice } from "./daily-advice.js?release=v0.4.2";
+import { initDailyAdvice } from "./daily-advice.js?release=v0.4.3";
 import { initAiQuota } from "./ai-quota.js";
 import { initHealthConnect, getHealthWeight } from "./health-connect.js";
 import "./wear-pairing.js";
+import "./native-appearance.js";
 import { createMealTimeline } from "./timeline.js";
 import { preparePhoto, openPhotoPicker } from "./photo-picker.js";
 import { showPhotoRecognitionDialog, parseMealEstimate, fillMealForm, setFormNutrition, clearFormNutrition, readFormNutrition, toastPhotoTransfer } from "./photo.js";
@@ -18,6 +20,7 @@ const todayNutrition = { calories: 0, protein: 0, fat: 0, carbs: 0 };
 const planMeals = { Завтрак: [{ name: "Омлет с овощами", calories: 310 }], Обед: [{ name: "Боул с курицей", calories: 520 }], Ужин: [], Перекус: [{ name: "Яблоко и йогурт", calories: 170 }] };
 
 let currentProfile = { ...DEFAULT_PROFILE };
+let profileDetailsReady = false;
 let currentAccount = {};
 let profileNameReady = false;
 let profileLoadVersion = 0;
@@ -309,18 +312,6 @@ async function renderDiaryForDate(date) {
 function renderWater() {
   const drops = element("drops");
   if (!drops) return;
-  const waterCard = drops.closest('.water');
-  if (!waterCard.querySelector('.water-title')) {
-    const title = document.createElement('h2');
-    title.className = 'water-title';
-    title.textContent = 'Вода';
-    waterCard.prepend(title);
-    element('waterText')?.closest('.section-head')?.remove();
-    const addButton = element('addWaterButton');
-    addButton.textContent = '+';
-    addButton.setAttribute('aria-label', 'Добавить стакан воды');
-    addButton.title = 'Добавить стакан воды';
-  }
   drops.replaceChildren();
   for (let index = 0; index < 8; index++) {
     const drop = document.createElement("button");
@@ -350,6 +341,8 @@ function saveWaterLog() {
 async function loadWater() {
   const date = todayKey();
   waterLogDate = date;
+  // Bind the already compact markup without waiting for account/network reads.
+  renderWater();
   try {
     const saved = await call("loadWaterLog", date);
     if (waterLogDate !== date || todayKey() !== date) return;
@@ -485,7 +478,7 @@ function deletePlanItem() {
 /* --------------------------------------------------------------- profile */
 
 function renderProfile() {
-  setText("profileName", profileNameReady ? currentProfile.name : "Загружаем профиль…");
+  setText("profileName", currentProfile.name || (currentAccount.uid ? "Заполните профиль" : "Гостевой режим"));
   const avatar = element("profileAvatar");
   if (avatar) {
     avatar.replaceChildren();
@@ -500,10 +493,10 @@ function renderProfile() {
       avatar.textContent = "🌿";
     }
   }
-  setText("profileSummary", ` · ${currentProfile.age} лет · ${formatNumber(currentProfile.height)} см · ${formatNumber(currentProfile.weight)} кг`);
-  setText("profileGoal", currentProfile.goal);
-  setText("profileRate", `Цель: ${formatNumber(currentProfile.targetWeight)} кг`);
-  setText("profileCalories", `${formatNumber(currentProfile.calories)} ккал`);
+  setText("profileSummary", profileDetailsReady ? ` · ${currentProfile.age} лет · ${formatNumber(currentProfile.height)} см · ${formatNumber(currentProfile.weight)} кг` : "Добавьте свои данные через «Изменить».");
+  setText("profileGoal", profileDetailsReady ? currentProfile.goal : "Не задана");
+  setText("profileRate", profileDetailsReady ? `Цель: ${formatNumber(currentProfile.targetWeight)} кг` : "Заполните профиль");
+  setText("profileCalories", profileDetailsReady ? `${formatNumber(currentProfile.calories)} ккал` : "Не задана");
   setText("releaseInfo", `Версия ${APP_VERSION}`);
   renderNutrition();
   renderPlan();
@@ -516,6 +509,7 @@ function shouldUseAccountName(saved, account) {
 function applyProfile(saved, account) {
   currentAccount = account || {};
   currentProfile = { ...DEFAULT_PROFILE, ...(saved || {}) };
+  profileDetailsReady = Boolean(saved?.age && saved?.height && saved?.weight);
   if (shouldUseAccountName(saved, account)) currentProfile.name = firstName(account.name);
   profileNameReady = Boolean(firstName(account?.name)) || Boolean(saved?.name && saved.name !== DEFAULT_PROFILE.name);
   if (profileNameReady) window.clearTimeout(profileNameFallbackTimer);
@@ -552,10 +546,10 @@ function openProfileEditor() {
     renderProfile();
   }
   element("profileNameInput").value = currentProfile.name;
-  element("profileAgeInput").value = currentProfile.age;
-  element("profileHeightInput").value = currentProfile.height;
-  element("profileWeightInput").value = currentProfile.weight;
-  element("profileTargetWeightInput").value = currentProfile.targetWeight;
+  element("profileAgeInput").value = profileDetailsReady ? currentProfile.age : "";
+  element("profileHeightInput").value = profileDetailsReady ? currentProfile.height : "";
+  element("profileWeightInput").value = profileDetailsReady ? currentProfile.weight : "";
+  element("profileTargetWeightInput").value = profileDetailsReady ? currentProfile.targetWeight : "";
   element("profileGoalInput").value = currentProfile.goal;
   element("profileCaloriesInput").value = currentProfile.calories;
   openModal("profileModal");
@@ -585,9 +579,11 @@ async function saveProfile(event) {
     return;
   }
   const previousProfile = currentProfile;
+  const previousDetailsReady = profileDetailsReady;
   const accountUid = currentAccount.uid;
   profileLoadVersion++;
   currentProfile = profile;
+  profileDetailsReady = true;
   renderProfile();
   closeProfileEditor();
   toast("Профиль сохранён");
@@ -596,6 +592,7 @@ async function saveProfile(event) {
   } catch {
     if (currentAccount.uid === accountUid) {
       currentProfile = previousProfile;
+      profileDetailsReady = previousDetailsReady;
       renderProfile();
     }
     toast("Не удалось синхронизировать профиль. Попробуйте ещё раз.");
@@ -730,6 +727,7 @@ function setPortionUnit(value) {
 }
 
 function setAutomaticPortionUnit() {
+  if (recognizedManualMealEstimate?.importedJson) { setPortionUnit("г"); return; }
   if (describedPortion?.title === normalizeTitle(element("mealName").value) && describedPortion.amount === Number(element("portion").value)) { setPortionUnit(describedPortion.unit); return; }
   const described = parsePortionDescription(element("mealName").value);
   if (described.amount === Number(element("portion").value)) { setPortionUnit(described.unit); return; }
@@ -739,6 +737,55 @@ function setAutomaticPortionUnit() {
 function openMeal() {
   openModal("modal");
   if (lastSelectedMealType) element("mealType").value = lastSelectedMealType;
+}
+
+function importMealJson(text, { fromAdvice = false, reportError = true } = {}) {
+  let meal;
+  try { meal = parseMealJson(text); } catch (error) {
+    if (reportError) toast(error.message);
+    return true;
+  }
+  if (!meal) return false;
+  if (mealCalculationBusy) { toast("Дождитесь завершения расчёта блюда и вставьте JSON снова"); return true; }
+  if (fromAdvice) openMeal();
+  fillMealForm(meal);
+  // Keep the exact imported portion (fillMealForm rounds photo estimates).
+  element("portion").value = String(meal.portion);
+  setPortionUnit("г");
+  savedMealEstimate = null;
+  describedPortion = null;
+  lastCalculatedUnitWeight = null;
+  lastNutritionClarification = null;
+  recognizedManualMealEstimate = { portion: meal.portion, ...readFormNutrition(), importedJson: true };
+  ["mealName", "portion"].forEach(id => clearMealEstimateError(element(id)));
+  element("mealNameSuggestions").hidden = true;
+  element("mealName").setAttribute("aria-expanded", "false");
+  if (fromAdvice) element("question").value = "";
+  toast("JSON распознан — проверьте блюдо и нажмите «Сохранить»");
+  return true;
+}
+
+function showMealJsonHelp() {
+  const { dialog, close } = openDialog({
+    id: "mealJsonHelp", labelledBy: "mealJsonHelpTitle",
+    html: '<section class="sheet"><h2 id="mealJsonHelpTitle">Блюдо из JSON</h2><p>Напишите своему ИИ название и описание блюда, затем вставьте скопированный промпт без изменений. Если порция не указана, ИИ оценит обычную порцию. Готовый JSON вставьте в название блюда или поле «Совет»: данные автоматически появятся в форме.</p><p class="hello">БЖУ и калории указываются на всю порцию. Расчёт ИИ приблизительный: проверьте его. Запись появится в дневнике только после «Сохранить».</p><pre class="meal-json-prompt"></pre><button type="button" class="secondary" id="copyMealJsonPrompt">Скопировать промпт</button><p role="status" id="mealJsonCopyStatus"></p><button type="button" class="primary" data-close>Понятно</button></section>',
+  });
+  dialog.querySelector("pre").textContent = MEAL_JSON_PROMPT;
+  dialog.querySelector("[data-close]").onclick = close;
+  const copy = dialog.querySelector("#copyMealJsonPrompt");
+  copy.onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(MEAL_JSON_PROMPT);
+      dialog.querySelector("#mealJsonCopyStatus").textContent = "Промпт скопирован";
+    } catch {
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(dialog.querySelector("pre"));
+      selection.removeAllRanges(); selection.addRange(range);
+      dialog.querySelector("#mealJsonCopyStatus").textContent = "Не удалось скопировать автоматически. Текст выделен — скопируйте его вручную.";
+    }
+  };
+  copy.focus();
 }
 
 function closeMeal() {
@@ -804,6 +851,7 @@ function buildMealEntry() {
 // Форма добавления блюда: запись появляется в дневнике только после «Сохранить».
 function saveMeal(event) {
   event.preventDefault();
+  if (importMealJson(element("mealName").value)) return;
   applyDescriptionPortion();
   if (!Number(element("portion").value)) { toast("Укажите количество в названии или рассчитайте порцию с ИИ"); element("portion").focus(); return; }
   setAutomaticPortionUnit();
@@ -1025,6 +1073,7 @@ function setCalculateButton(busy) {
 
 // Количество берём из названия или поля; иначе ИИ предлагает типичную порцию.
 function applyDescriptionPortion() {
+  if (recognizedManualMealEstimate?.importedJson) return;
   const parsed = parsePortionDescription(element("mealName").value);
   if (!element("portion").value && parsed.amount) {
     element("portion").value = String(parsed.amount);
@@ -1035,6 +1084,7 @@ function applyDescriptionPortion() {
 
 async function calculateMealNutrition(clarification = "") {
   if (mealCalculationBusy) return;
+  if (importMealJson(element("mealName").value)) return;
   mealCalculationBusy = true;
   try {
   applyDescriptionPortion();
@@ -1366,6 +1416,7 @@ async function requestAdvice(event) {
   event?.preventDefault();
   const text = element("question").value.trim();
   if (!text) return;
+  if (importMealJson(text, { fromAdvice: true })) return;
   const hadPhoto = Boolean(selectedPhoto);
   removeAiDiagnostic("aiResponseDiagnostic");
   appendBubble("bubble user", text);
@@ -1660,8 +1711,11 @@ function initMealForm() {
     }
     loadMealSuggestions().then(() => renderMealSuggestions(savedMealProducts));
   });
-  name.addEventListener("change", applySavedMealProduct);
+  name.addEventListener("change", () => {
+    if (!recognizedManualMealEstimate?.importedJson) applySavedMealProduct();
+  });
   name.addEventListener("input", () => {
+    if (importMealJson(name.value, { reportError: false })) return;
     savedMealEstimate = null;
     recognizedManualMealEstimate = null;
     renderMealSuggestions(savedMealProducts);
@@ -1694,6 +1748,17 @@ function initPlan() {
 }
 
 function initNavigation() {
+  for (const id of ["mealJsonHelpButton", "adviceJsonHelpButton"]) element(id).onclick = showMealJsonHelp;
+  for (const id of ["mealName", "question"]) {
+    const input = element(id);
+    const fromAdvice = id === "question";
+    input.addEventListener("paste", event => {
+      const text = event.clipboardData?.getData("text") || "";
+      if (importMealJson(text, { fromAdvice })) event.preventDefault();
+    });
+    if (fromAdvice) input.addEventListener("input", () => importMealJson(input.value, { fromAdvice, reportError: false }));
+    input.addEventListener("change", () => importMealJson(input.value, { fromAdvice }));
+  }
   for (const nav of document.querySelectorAll("[data-nav]")) {
     nav.addEventListener("click", () => showScreen(nav.dataset.nav));
   }
