@@ -22,6 +22,11 @@ const slice = (code, start, end) => code.slice(code.indexOf(start), code.indexOf
       const setPortionUnit = unit => element('portionUnit').value = unit;
       element('mealNameActions').insertAdjacentHTML('afterend', '<div id="mealNameSuggestions"></div>');
       ` + slice(app, '  for (const id of ["mealJsonHelpButton"', '  for (const nav of') });
+    await page.addScriptTag({ content: slice(app, 'function fillSavedMealNutrition()', '/* -------------------------------------------------------------- AI: meal */') + '\n' + slice(app, '  for (const id of ["calories", "protein", "fat", "carbs"])', '  for (const id of ["mealName", "portion"])') + `
+      const portionUnit = () => element('portionUnit').value;
+      const setAutomaticPortionUnit = () => { if (element('nutritionBasis100').checked) setPortionUnit('г'); };
+      element('portion').addEventListener('input', fillMealNutritionFromPortion);
+    ` });
     const meal = { title: 'Салат', portion: 250.5, protein: 20, fat: 10, carbs: 30 };
     const paste = (id, text) => page.evaluate(({ id, text }) => {
       const data = new DataTransfer(); data.setData('text', text);
@@ -53,6 +58,40 @@ const slice = (code, start, end) => code.slice(code.indexOf(start), code.indexOf
     assert.equal(await page.locator('#mealJsonHelpButton').textContent(), 'Спросить у другого ИИ');
     assert.ok(await page.locator('#mealJsonHelpButton').evaluate(button => button.getBoundingClientRect().top >= document.getElementById('mealName').getBoundingClientRect().bottom));
     assert.equal(await page.locator('#adviceJsonHelpButton').evaluate(button => button.previousElementSibling.id), 'askForm');
+    await page.locator('label:has(#nutritionBasis100)').click();
+    await page.locator('#portion').fill('250');
+    await page.locator('#calories').fill('160');
+    await page.locator('#protein').fill('');
+    await page.locator('#fat').fill('4');
+    await page.locator('#carbs').fill('');
+    assert.deepEqual(await page.evaluate(() => readFormNutrition()), { calories: 400, protein: 0, fat: 10, carbs: 0 });
+    await page.locator('#portion').fill('300');
+    assert.equal(await page.locator('#calories').inputValue(), '160');
+    assert.equal(await page.evaluate(() => readFormNutrition().calories), 480);
+    await paste('mealName', JSON.stringify(meal));
+    assert.equal(await page.locator('#nutritionBasisPortion').isChecked(), true);
+    assert.equal(await page.evaluate(() => readFormNutrition().calories), 290);
+    await page.locator('#calories').fill('450');
+    await page.locator('#portion').fill('300');
+    assert.equal(await page.locator('#calories').inputValue(), '450', 'manual correction survives portion change');
+    await page.locator('label:has(#nutritionBasis100)').click();
+    await page.locator('#modal form').evaluate(form => form.reset());
+    assert.equal(await page.locator('#nutritionBasisPortion').isChecked(), true);
+    await paste('mealName', JSON.stringify(meal));
+    for (const width of [320, 390, 430, 1440]) {
+      await page.setViewportSize({ width, height: 844 });
+      assert.ok(await page.locator('#modal .sheet').evaluate(el => el.scrollWidth <= el.clientWidth), `form overflow at ${width}`);
+      assert.ok(await page.locator('.meal-data-row').evaluate(row => {
+        const input = row.querySelector('#portion').getBoundingClientRect();
+        const toggle = row.querySelector('.meal-basis-options').getBoundingClientRect();
+        return toggle.left >= input.right && Math.abs(toggle.bottom - input.bottom) < 4;
+      }), `portion and toggle must share a row at ${width}`);
+      assert.ok(await page.locator('.meal-macros-row').evaluate(row => {
+        const boxes = [...row.querySelectorAll('input')].map(el => el.getBoundingClientRect());
+        return boxes.length === 4 && boxes.every(box => Math.abs(box.top - boxes[0].top) < 1);
+      }), `calories and macros must share a row at ${width}`);
+    }
+    await page.screenshot({ path: process.env.MEAL_SCREENSHOT || require('os').tmpdir() + '/manual-nutrition.png' });
     console.log('JSON paste in both fields, draft safety, prompt copy, dialog close and widths: passed');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

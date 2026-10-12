@@ -5,7 +5,7 @@ import { hasStore, has, call, loadProfile as loadStoredProfile, accountDefaults,
 import { toast, setText, showScreen, openModal, closeModal, openDialog, showAiDiagnostic, removeAiDiagnostic, setAiDebug, clearAiDebug, showCalculationResult } from "./ui.js";
 import { askAi, getAiToken, requestAiAdvice, clearErrors, clearServiceError, availability } from "./ai-client.js";
 import { initAiAvailability } from "./ai-availability.js";
-import { initDailyAdvice } from "./daily-advice.js?release=v0.4.4";
+import { initDailyAdvice } from "./daily-advice.js?release=v0.4.5";
 import { initAiQuota } from "./ai-quota.js";
 import { initHealthConnect, getHealthWeight } from "./health-connect.js";
 import "./wear-pairing.js";
@@ -726,6 +726,7 @@ function setPortionUnit(value) {
 }
 
 function setAutomaticPortionUnit() {
+  if (element("nutritionBasis100")?.checked) { setPortionUnit("г"); return; }
   if (recognizedManualMealEstimate?.importedJson) { setPortionUnit("г"); return; }
   if (describedPortion?.title === normalizeTitle(element("mealName").value) && describedPortion.amount === Number(element("portion").value)) { setPortionUnit(describedPortion.unit); return; }
   const described = parsePortionDescription(element("mealName").value);
@@ -860,6 +861,9 @@ function saveMeal(event) {
   if (importMealJson(element("mealName").value)) return;
   applyDescriptionPortion();
   if (!Number(element("portion").value)) { toast("Укажите количество в названии или рассчитайте порцию с ИИ"); element("portion").focus(); return; }
+  if (element("nutritionBasis100")?.checked && portionUnit() !== "г") {
+    toast("Для значений на 100 г укажите вес порции в граммах"); element("portion").focus(); return;
+  }
   setAutomaticPortionUnit();
   const entry = buildMealEntry();
   const stored = { ...entry, id: crypto.randomUUID() };
@@ -1039,6 +1043,7 @@ function fillRecognizedMealNutrition() {
 
 function fillMealNutritionFromPortion() {
   setAutomaticPortionUnit();
+  if (element("nutritionBasis100")?.checked) return;
   if (savedMealEstimate) fillSavedMealNutrition();
   else fillRecognizedMealNutrition();
 }
@@ -1661,6 +1666,25 @@ function initMealForm() {
   });
   element("mealCancelButton").onclick = closeMeal;
   element("calculateMealButton").onclick = () => calculateMealNutrition();
+  for (const id of ["calories", "protein", "fat", "carbs"]) {
+    element(id).addEventListener("input", () => {
+      // A manual correction must survive a later change of portion.
+      savedMealEstimate = null;
+      recognizedManualMealEstimate = null;
+    });
+  }
+  for (const id of ["nutritionBasisPortion", "nutritionBasis100"]) {
+    element(id).addEventListener("change", () => {
+      if (element("nutritionBasis100").checked && portionUnit() !== "г") {
+        element("nutritionBasisPortion").checked = true;
+        toast("Для значений на 100 г сначала укажите вес порции в граммах");
+        element("portion").focus();
+        return;
+      }
+      savedMealEstimate = null;
+      recognizedManualMealEstimate = null;
+    });
+  }
 
   for (const id of ["mealName", "portion"]) {
     element(id).addEventListener("input", () => clearMealEstimateError(element(id)));
