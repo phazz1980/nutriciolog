@@ -123,7 +123,10 @@ async function localFirstRead(collection, scope, fetcher) {
       if (uid) cacheRead(uid, collection, scope, result);
       failedReads.delete(refreshKey);
       publishReadStatus();
-      if ((cached || pending) && JSON.stringify(cached?.data) !== JSON.stringify(result)) window.dispatchEvent(new CustomEvent('nutrition-data-updated', { detail: { uid, collection, scope, data: cachedReadValue(uid, collection, scope, readCache(uid, collection, scope)) } }));
+      const updated = uid ? readCache(uid, collection, scope) : null;
+      // Compare the same display-field projection: server-only timestamps must
+      // not trigger endless rereads and detach open product suggestions.
+      if ((cached || pending) && JSON.stringify(cached?.data) !== JSON.stringify(updated?.data)) window.dispatchEvent(new CustomEvent('nutrition-data-updated', { detail: { uid, collection, scope, data: cachedReadValue(uid, collection, scope, updated) } }));
       return result;
     })().catch(error => {
       if (displayOwner() === uid && (isTemporaryFirestoreError(error) || ['auth/unavailable','auth/loading','auth/network-request-failed'].includes(error?.code))) {
@@ -218,6 +221,9 @@ async function sendDurableWrite(action, collection, id, value, uid) {
     ? deleteDoc(reference)
     : setDoc(reference, { ...value, updatedAt: serverTimestamp() }, { merge: true }))
     .then(() => {
+      // Reads started while this write was pending may omit the new document.
+      // Invalidate them before removing the outbox overlay.
+      readRevision++;
       storePendingWrites(uid, pendingWrites(uid).filter(item => item.opId !== operation.opId));
       updateStatus();
       return "cloud";
@@ -250,6 +256,7 @@ async function flushPendingWrites() {
         else await setDoc(reference, { ...pending.value, updatedAt: serverTimestamp() }, { merge: true });
         const current = pendingWrites(uid);
         const remaining = current.filter(item => item.opId !== pending.opId);
+        readRevision++;
         storePendingWrites(uid, remaining);
         reportDebug({ type: "sync", mode: "flushed", collection: pending.collection });
       } catch (error) {
