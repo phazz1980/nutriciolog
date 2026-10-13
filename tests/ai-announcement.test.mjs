@@ -51,6 +51,7 @@ async function fixture(uid) {
   const context = {
     document: { getElementById: id => ({ dailyAdvice: card, dailyAdviceText: text, retryDailyAdvice: retry })[id] },
     todayKey: () => "2026-10-11", accountDefaults: () => ({ uid }),
+    nutritionTargets: () => ({ protein: 0, fat: 0, carbs: 0 }),
     activeAnnouncement: () => active, refreshAnnouncement: async () => active,
     call: async () => [], askAi: async () => { calls++; return { status: "ok", data: { advice: "Совет" } }; },
     onAuthChanged: () => {}, onStoreReady: () => {}, navigator: { onLine: true },

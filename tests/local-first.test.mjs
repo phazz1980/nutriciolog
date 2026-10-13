@@ -36,6 +36,34 @@ function setup() {
 }
 const meal = { id: 'meal', title: 'Суп', date: '2026-10-12', calories: 200 };
 
+test('unchanged display data with server timestamps does not emit repeated updates', async () => {
+  const h = setup();
+  let timestamp = 0;
+  h.sdk.getDocs = async () => ({ docs: [{ id: meal.id, data: () => ({ ...meal, updatedAt: ++timestamp }) }] });
+  await h.store.loadDiaryEntries(meal.date);
+  h.events.length = 0;
+  await h.store.loadDiaryEntries(meal.date); await tick();
+  await h.store.loadDiaryEntries(meal.date); await tick();
+  assert.equal(h.events.filter(event => event.type === 'nutrition-data-updated').length, 0);
+});
+
+test('read started during a write cannot erase the meal after acknowledgement removes outbox', async () => {
+  const h = setup();
+  let acknowledge, finishRead;
+  h.sdk.setDoc = () => new Promise(resolve => { acknowledge = resolve; });
+  h.sdk.serverTimestamp = () => 0;
+  const saving = h.store.saveDiaryEntry(meal);
+  await tick();
+  h.sdk.getDocs = () => new Promise(resolve => { finishRead = resolve; });
+  assert.deepEqual(plain(await h.store.loadDiaryEntries(meal.date)), [meal]);
+  await tick();
+  acknowledge(); await saving;
+  assert.equal(vm.runInContext('pendingWrites().length', h.context), 0);
+  finishRead({ docs: [] }); await tick();
+  const cached = JSON.parse(h.storage.getItem('my-nutritionist:account:A:read:foodDiary:'+meal.date+':v1:'));
+  assert.deepEqual(cached.data, [meal]);
+});
+
 test('server data is cached; subsequent startup reads locally before a delayed server and retains it on failure', async () => {
   const h = setup();
   h.sdk.getDocs = async () => ({ docs: [{ id: meal.id, data: () => meal }] });

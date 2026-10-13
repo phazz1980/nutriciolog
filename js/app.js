@@ -5,7 +5,7 @@ import { hasStore, has, call, loadProfile as loadStoredProfile, accountDefaults,
 import { toast, setText, showScreen, openModal, closeModal, openDialog, showAiDiagnostic, removeAiDiagnostic, setAiDebug, clearAiDebug, showCalculationResult } from "./ui.js";
 import { askAi, getAiToken, requestAiAdvice, clearErrors, clearServiceError, availability } from "./ai-client.js";
 import { initAiAvailability } from "./ai-availability.js";
-import { initDailyAdvice } from "./daily-advice.js?release=v0.4.8";
+import { initDailyAdvice } from "./daily-advice.js?release=v0.4.9";
 import { initAiQuota } from "./ai-quota.js";
 import { initHealthConnect, getHealthWeight } from "./health-connect.js";
 import "./wear-pairing.js";
@@ -29,6 +29,7 @@ let profileNameFallbackTimer;
 
 let selectedDiaryDate = todayKey();
 let diaryLoadVersion = 0;
+const optimisticDiaryEntries = new Map();
 
 let water = 0;
 let waterLogDate = todayKey();
@@ -212,7 +213,7 @@ async function loadDiary() {
   if (!has("loadDiaryEntries")) return;
   const version = ++diaryLoadVersion;
   try {
-    const entries = await call("loadDiaryEntries", todayKey());
+    const entries = mergeOptimisticDiary(await call("loadDiaryEntries", todayKey()), todayKey());
     if (version !== diaryLoadVersion) return;
     todayNutrition.calories = 0;
     todayNutrition.protein = 0;
@@ -231,6 +232,18 @@ async function loadDiary() {
 }
 
 // Добавление записи в уже отрисованный дневник без полной перезагрузки.
+function mergeOptimisticDiary(entries, date) {
+  const owner = window.nutritionStore?.getDisplayOwner?.() || '';
+  const byId = new Map((entries || []).map(entry => [entry.id, entry]));
+  for (const { entry, uid } of optimisticDiaryEntries.values()) {
+    if (uid !== owner || entry.date !== date) continue;
+    // A save acknowledgement does not prove that the next read includes it.
+    if (byId.has(entry.id)) optimisticDiaryEntries.delete(entry.id);
+    else byId.set(entry.id, entry);
+  }
+  return [...byId.values()];
+}
+
 function addDiaryEntryToView(entry) {
   if (!entry || entry.date !== todayKey()) return;
   entry.id ||= crypto.randomUUID();
@@ -256,6 +269,8 @@ async function deleteDiaryEntry(id, item) {
     return;
   }
   const values = { calories: row.dataset.calories, protein: row.dataset.protein, fat: row.dataset.fat, carbs: row.dataset.carbs };
+  optimisticDiaryEntries.delete(id);
+  diaryLoadVersion++;
   const card = row.closest("[data-meal-type]");
   row.remove();
   if (card && !card.querySelector(".entry")) card.remove();
@@ -288,7 +303,7 @@ async function renderDiaryForDate(date) {
   hint.textContent = "Просмотр сохранённого рациона";
   const version = ++diaryLoadVersion;
   try {
-    const entries = await call("loadDiaryEntries", date) || [];
+    const entries = mergeOptimisticDiary(await call("loadDiaryEntries", date), date);
     if (version !== diaryLoadVersion || date !== selectedDiaryDate) return;
     list.replaceChildren(hint);
     if (!entries.length) {
@@ -869,9 +884,20 @@ function saveMeal(event) {
   setAutomaticPortionUnit();
   const entry = buildMealEntry();
   const stored = { ...entry, id: crypto.randomUUID() };
+  const owner = window.nutritionStore?.getDisplayOwner?.() || '';
+  optimisticDiaryEntries.set(stored.id, { entry: stored, uid: owner });
+  // Invalidate an older read before displaying the explicitly saved meal.
+  diaryLoadVersion++;
   const isTomorrow = entry.date === dateKeyFor("tomorrow");
   addDiaryEntryToView(stored);
-  persist("saveDiaryEntry", stored);
+  const saving = persist("saveDiaryEntry", stored);
+  saving?.then(saved => {
+    if (!saved) optimisticDiaryEntries.delete(stored.id);
+    if (owner !== (window.nutritionStore?.getDisplayOwner?.() || '') || selectedDiaryDate !== stored.date) return;
+    // Keep the overlay until a read actually returns this UUID.
+    diaryLoadVersion++;
+    renderDiaryForDate(stored.date);
+  });
   const clarification = lastNutritionClarification;
   const hasClarification = clarification?.title === normalizeTitle(entry.title);
   const savedProduct = {
@@ -899,7 +925,7 @@ function saveMeal(event) {
   savedMealEstimate = null;
   recognizedManualMealEstimate = null;
   showScreen("diary");
-  renderDiaryForDate(entry.date === todayKey() ? todayKey() : selectedDiaryDate);
+  renderDiaryForDate(entry.date);
   toast(`Блюдо добавлено на ${isTomorrow ? "завтра" : "сегодня"}`);
 }
 
@@ -1645,8 +1671,9 @@ function removePhoto() {
 
 function persist(method, value) {
   if (!has(method)) return;
-  Promise.resolve(call(method, value)).catch(() => {
+  return Promise.resolve(call(method, value)).then(() => true).catch(() => {
     toast("Не удалось синхронизировать данные. Они останутся на этом устройстве.");
+    return false;
   });
 }
 
@@ -1707,6 +1734,12 @@ function initMealForm() {
         element("nutritionBasisPortion").checked = true;
         toast("Для значений на 100 г сначала укажите вес порции в граммах");
         element("portion").focus();
+        return;
+      }
+      if (savedMealEstimate) {
+        // Basis changes change the display, not the saved product's source data.
+        if (element('nutritionBasis100').checked) showSavedMealPer100();
+        else fillSavedMealNutrition();
         return;
       }
       savedMealEstimate = null;
@@ -1920,6 +1953,7 @@ function boot() {
     const owner = window.nutritionStore?.getDisplayOwner?.() || '';
     // Restoring the SAME account must not clear the already visible preview.
     if (owner !== displayedDataOwner) {
+      optimisticDiaryEntries.clear();
       diaryLoadVersion++;
       Object.assign(todayNutrition, { calories: 0, protein: 0, fat: 0, carbs: 0 });
       clearDiaryView();

@@ -12,13 +12,14 @@ function draft({ per100 = false, portion = "250", protein = "", fat = "4", carbs
   fields.nutritionBasisPortion = { checked: !per100 };
   const writes = [];
   const context = vm.createContext({
+    window: {}, diaryLoadVersion: 0, optimisticDiaryEntries: new Map(),
     document: { getElementById: id => fields[id] }, element: id => fields[id], safeNumber,
     portionUnit: () => fields.portionUnit.value, normalizeTitle: title => title.toLowerCase(),
     dateKeyFor: () => "2026-10-12", todayKey: () => "2026-10-12", selectedDiaryDate: "2026-10-12",
     lastCalculatedUnitWeight: null, lastNutritionClarification: null, savedMealEstimate: null,
     recognizedManualMealEstimate: null, savedMealProducts: [], crypto: { randomUUID: () => "draft-test" },
     importMealJson: () => false, applyDescriptionPortion() {}, setAutomaticPortionUnit() {},
-    addDiaryEntryToView() {}, persist: (name, value) => writes.push({ name, value }),
+    addDiaryEntryToView() {}, persist: (name, value) => { writes.push({ name, value }); },
     renderMealSuggestions() {}, closeMeal() {}, showScreen() {}, renderDiaryForDate() {}, toast() {},
   });
   vm.runInContext(photo.slice(photo.indexOf("export function setFormNutrition"), photo.indexOf("export function toastPhotoTransfer")).replace(/export /g, ""), context);

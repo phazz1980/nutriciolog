@@ -412,6 +412,44 @@ export const serverTimestamp=()=>0;
     });
 
     // SW behavior without a real Google connection or a persistent browser cache.
+    await check('Acknowledged save stays visible until a read contains its UUID', {}, async ({page}) => {
+      await page.evaluate(()=>{
+        window.test.setUser({uid:'ack-save-user',getIdToken:async()=>'test-token'});
+        window.nutritionStore.loadDiaryEntries=async()=>[];
+      });
+      await page.locator('#todayAddMealButton').click();
+      await page.locator('#mealType').selectOption('Обед');
+      await page.locator('#mealName').fill('Суп после подтверждения');
+      await page.locator('#portion').fill('200');
+      await page.locator('#calories').fill('300');
+      await page.locator('#modal .primary').click();
+      await page.locator('#mealList .entry').filter({hasText:'Суп после подтверждения'}).waitFor();
+      await page.waitForTimeout(350);
+      await page.evaluate(()=>window.dispatchEvent(new Event('nutrition-data-retry')));
+      await page.waitForTimeout(200);
+      assert.equal(await page.locator('#mealList .entry').filter({hasText:'Суп после подтверждения'}).count(),1);
+      assert.equal(await page.locator('#eaten').textContent(),'300');
+    });
+    for (const day of ['today','tomorrow']) {
+      await check('Saved meal stays visible immediately and through stale reloads: '+day, {failSave:true}, async ({page}) => {
+        await page.evaluate(()=>window.test.setUser({uid:'save-view-user',getIdToken:async()=>'test-token'}));
+        await page.locator('#todayAddMealButton').click();
+        await page.locator('#mealDate').selectOption(day);
+        await page.locator('#mealType').selectOption('Обед');
+        await page.locator('#mealName').fill('Новый суп');
+        await page.locator('#portion').fill('200');
+        await page.locator('#calories').fill('300');
+        await page.locator('#modal .primary').click();
+        await page.locator('#mealList .entry').filter({hasText:'Новый суп'}).waitFor();
+        assert.equal(await page.locator('#mealList .entry').count(),1);
+        if(day==='today')assert.equal(await page.locator('#eaten').textContent(),'300');
+        await page.evaluate(()=>window.dispatchEvent(new Event('nutrition-data-retry')));
+        await page.waitForTimeout(300);
+        assert.equal(await page.locator('#mealList .entry').filter({hasText:'Новый суп'}).count(),1);
+        if(day==='today')assert.equal(await page.locator('#eaten').textContent(),'300');
+        assert.equal(await page.locator('#diary.active').count(),1);
+      });
+    }
     await check('Selecting a saved dish shows macros without entering portion or refocusing', {products:[{title:'Суп из базы',portion:200,calories:400,protein:20,fat:10,carbs:40}]}, async ({page}) => {
       await page.evaluate(()=>window.test.setUser({uid:'macro-user',getIdToken:async()=>'test-token'}));
       await page.locator('#todayAddMealButton').click();
@@ -431,6 +469,25 @@ export const serverTimestamp=()=>0;
       assert.equal(await page.locator('#carbs').inputValue(),'50');
       const values=await page.evaluate(async()=>{const {readFormNutrition}=await import('./js/photo.js');return readFormNutrition();});
       assert.deepEqual(values,{calories:500,protein:25,fat:12.5,carbs:50});
+      // Basis switches must preserve the selected product and future scaling.
+      await page.locator('label:has(#nutritionBasis100)').click();
+      assert.equal(await page.locator('#calories').inputValue(),'200');
+      assert.equal(await page.locator('#protein').inputValue(),'10');
+      assert.equal(await page.locator('#fat').inputValue(),'5');
+      assert.equal(await page.locator('#carbs').inputValue(),'20');
+      await page.locator('label:has(#nutritionBasisPortion)').click();
+      assert.equal(await page.locator('#calories').inputValue(),'500');
+      assert.equal(await page.locator('#protein').inputValue(),'25');
+      await page.locator('#portion').fill('300');
+      assert.equal(await page.locator('#calories').inputValue(),'600');
+      assert.equal(await page.locator('#protein').inputValue(),'30');
+      assert.equal(await page.locator('#fat').inputValue(),'15');
+      assert.equal(await page.locator('#carbs').inputValue(),'60');
+      await page.locator('label:has(#nutritionBasis100)').click();
+      await page.locator('label:has(#nutritionBasisPortion)').click();
+      await page.locator('#portion').fill('150');
+      assert.equal(await page.locator('#calories').inputValue(),'300');
+      assert.equal(await page.locator('#protein').inputValue(),'15');
       await page.locator('#portion').fill('');
       assert.equal(await page.locator('#nutritionBasis100').isChecked(),true);
       assert.equal(await page.locator('#calories').inputValue(),'200');
@@ -520,8 +577,9 @@ export const serverTimestamp=()=>0;
 
     await check('Daily advice sends current menu once per load, ignores proposed saves and clears on sign-out', {}, async ({page}) => {
       let posts=0;
+      const adviceMessages=[];
       await page.route('https://functions.yandexcloud.net/**', async route => {
-        if(route.request().method()==='POST' && route.request().postDataJSON().action!=='usage') { posts++; assert.match(route.request().postData(), /Меню:/); }
+        if(route.request().method()==='POST' && route.request().postDataJSON().action!=='usage') { posts++; adviceMessages.push(route.request().postDataJSON().message); assert.match(route.request().postData(), /Меню:/); }
         await route.fulfill({json:{advice:'Добавьте овощи к следующему приёму пищи.',proposedMeal:{title:'Do not save',calories:10}}});
       });
       await page.evaluate(() => window.test.setUser({uid:'advice-user',getIdToken:async()=> 'test-token'}));
@@ -547,6 +605,22 @@ export const serverTimestamp=()=>0;
       const changedDeadline=Date.now()+8000;
       while(posts<2 && Date.now()<changedDeadline) await new Promise(resolve=>setTimeout(resolve,50));
       assert.equal(posts,2,'Changed menu receives a new advice request');
+      await page.evaluate(()=>{
+        window.nutritionStore.listProducts=async()=>[{title:'Творог из личной базы',portion:100,calories:100,protein:20,fat:2,carbs:3}];
+        window.nutritionStore.loadProfile=async()=>({calories:1800});
+        window.dispatchEvent(new CustomEvent('nutrition-data-updated',{detail:{uid:'advice-user',collection:'products'}}));
+      });
+      await page.waitForTimeout(500);
+      assert.equal(posts,3,'Library changes update advice without reload');
+      assert.match(adviceMessages.at(-1), /Творог из личной базы/);
+      assert.match(adviceMessages.at(-1), /1800\/135\/60\/180/);
+      await page.evaluate(()=>{
+        window.nutritionStore.loadDiaryEntries=async()=>[{title:'Каша',calories:400,protein:10,fat:5,carbs:50}];
+        window.dispatchEvent(new CustomEvent('nutrition-diary-saved',{detail:{owner:'advice-user',entry:{date:new Date().toLocaleDateString('en-CA')}}}));
+      });
+      await page.waitForTimeout(500);
+      assert.equal(posts,4,'Saved meal updates advice without reload');
+      assert.match(adviceMessages.at(-1), /400\/10\/5\/50/);
       await page.evaluate(()=>window.test.setUser(null));
       await page.locator('#dailyAdvice').waitFor({state:'hidden'});
     });
