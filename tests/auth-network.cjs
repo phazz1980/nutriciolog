@@ -511,6 +511,63 @@ export const serverTimestamp=()=>0;
       assert.equal(await page.locator('.meal-suggestion',{hasText:'Сыр российский'}).count(),0);
       assert.equal(await name.evaluate(node=>document.activeElement===node),true);
     });
+    await check('Android APK link is available in web profile without signing in', {}, async ({page}) => {
+      await page.locator('.nav[data-nav="profile"]').click();
+      const link=page.locator('#androidDownloadLink');
+      assert.equal(await link.isVisible(),true);
+      assert.equal(await link.getAttribute('href'),'https://nutriciolog-x20.website.yandexcloud.net/downloads/nutriciolog-0.4.10.apk');
+      assert.equal(await link.getAttribute('download'),'nutriciolog-0.4.10.apk');
+      assert.match(await page.locator('#androidDownloadCard').textContent(), /Тестовая версия 0.4.10/);
+      for(const width of [320,390,1440]) {
+        await page.setViewportSize({width,height:844});
+        assert.ok(await page.locator('#androidDownloadCard').evaluate(card=>card.scrollWidth<=card.clientWidth));
+      }
+    });
+    await check('Suggestions require a nonempty query and stay cleared after saving/reopening', {products:[{title:'Суп из базы',portion:200,calories:400,protein:20,fat:10,carbs:40}]}, async ({page}) => {
+      await page.evaluate(()=>window.test.setUser({uid:'empty-suggestions-user',getIdToken:async()=>'test-token'}));
+      await page.locator('#todayAddMealButton').click();
+      const name=page.locator('#mealName');
+      const box=page.locator('#mealNameSuggestions');
+      await name.focus();
+      await page.waitForTimeout(150);
+      assert.equal(await box.isVisible(),false);
+      assert.equal(await box.locator('.meal-suggestion').count(),0);
+      await name.fill('с');
+      await page.locator('.meal-suggestion',{hasText:'Суп из базы'}).waitFor();
+      await name.fill('   ');
+      assert.equal(await box.isVisible(),false);
+      await name.fill('суп');
+      await page.locator('.meal-suggestion',{hasText:'Суп из базы'}).click();
+      await page.locator('#portion').fill('200');
+      await page.locator('#mealType').selectOption('Обед');
+      await page.locator('#modal .primary').click();
+      await page.locator('#diaryAddButton').click();
+      assert.equal(await name.inputValue(),'');
+      assert.equal(await box.isVisible(),false);
+      assert.equal(await box.locator('.meal-suggestion').count(),0);
+      assert.equal(await name.getAttribute('aria-expanded'),'false');
+      await name.fill('с');
+      await page.locator('.meal-suggestion',{hasText:'Суп из базы'}).waitFor();
+      await name.fill('');
+      await page.evaluate(()=>window.dispatchEvent(new CustomEvent('nutrition-data-updated',{detail:{uid:'empty-suggestions-user',collection:'products',data:window.test.products}})));
+      await page.waitForTimeout(150);
+      assert.equal(await box.isVisible(),false);
+      assert.equal(await box.locator('.meal-suggestion').count(),0);
+    });
+    await check('Late product load cannot repopulate suggestions after clearing query', {}, async ({page}) => {
+      await page.evaluate(()=>{
+        window.test.setUser({uid:'late-suggestions-user',getIdToken:async()=>'test-token'});
+        window.nutritionStore.listProducts=()=>new Promise(resolve=>{window.test.finishSuggestions=resolve;});
+      });
+      await page.locator('#todayAddMealButton').click();
+      await page.locator('#mealName').fill('с');
+      await page.waitForFunction(()=>Boolean(window.test.finishSuggestions));
+      await page.locator('#mealName').fill('');
+      await page.evaluate(()=>window.test.finishSuggestions([{title:'Суп',portion:100,calories:100}]));
+      await page.waitForTimeout(150);
+      assert.equal(await page.locator('#mealNameSuggestions').isVisible(),false);
+      assert.equal(await page.locator('.meal-suggestion').count(),0);
+    });
     await check('Portion from text offers personal products and scales without an AI request', {products:[{title:'Сыр российский',portion:100,calories:350,protein:25,fat:27,carbs:0}]}, async ({page}) => {
       await page.evaluate(() => window.test.setUser({uid:'portion-user',getIdToken:async()=> 'test-token'}));
       await page.locator('#todayAddMealButton').click();

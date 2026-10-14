@@ -33,6 +33,7 @@ jobs:
           cp service-worker.js deploy/
           cp manifest.webmanifest deploy/
           cp -r icons deploy/
+          cp -r downloads deploy/
 
       - name: Deploy to Yandex Object Storage
         run: |

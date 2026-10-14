@@ -31,6 +31,15 @@ test('PWA shell references existing files and does not cache health/user data or
   for (const match of shell.matchAll(/"\.\/([^"?]+)(?:\?[^" ]+)?"/g)) await source(match[1]);
   assert.ok(!shell.includes('ai-status.json'));
   assert.ok(!shell.includes('foodDiary'));
+  assert.ok(!shell.includes('.apk'));
+});
+
+test('APK download matches shared version and is not bundled recursively into Android', async () => {
+  const version=(await source('js/core.js')).match(/APP_VERSION = "v([^"]+)"/)[1];
+  const html=await source('index.html');
+  assert.ok(html.includes(`/downloads/nutriciolog-${version}.apk`));
+  assert.ok((await source('.github/workflows/deploy-yandex.yml')).includes('cp -r downloads deploy/'));
+  assert.ok(!(await source('scripts/build-android-web.mjs')).includes('"downloads"'));
 });
 
 test('Android assets are generated from the same Web source, not a separate client tree', async () => {

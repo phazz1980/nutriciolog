@@ -16,12 +16,12 @@ const slice = (code, start, end) => code.slice(code.indexOf(start), code.indexOf
     await page.addStyleTag({ content: fs.readFileSync(path.join(root, 'styles.css'), 'utf8') });
     await page.addScriptTag({ content: core + '\n' + slice(photo, 'export function fillMealForm', 'export function toastPhotoTransfer') + '\n' + slice(ui, 'export function openDialog', '// Раскрываемый') + '\n' + slice(app, 'function openMeal()', 'function closeMeal()') + '\n' + slice(app, 'function clearMealEstimateError', 'function validateMealEstimate') + `
       const element = id => document.getElementById(id);
-      let lastSelectedMealType = '', mealCalculationBusy = false, savedMealEstimate = null, describedPortion = null, lastCalculatedUnitWeight = null, lastNutritionClarification = null, recognizedManualMealEstimate = null;
+      let lastSelectedMealType = '', mealCalculationBusy = false, savedMealEstimate = null, describedPortion = null, lastCalculatedUnitWeight = null, lastNutritionClarification = null, recognizedManualMealEstimate = null, skipMealSuggestionsOnFocus = false;
       const toast = message => window.lastToast = message;
       const openModal = id => element(id).classList.add('show');
       const setPortionUnit = unit => element('portionUnit').value = unit;
       element('mealNameActions').insertAdjacentHTML('afterend', '<div id="mealNameSuggestions"></div>');
-      ` + slice(app, '  for (const id of ["mealJsonHelpButton"', '  for (const nav of') });
+      ` + slice(app, 'const suggestions =', 'function renderMealSuggestions') + '\n' + slice(app, '  for (const id of ["mealJsonHelpButton"', '  for (const nav of') });
     await page.addScriptTag({ content: slice(app, 'function fillSavedMealNutrition()', '/* -------------------------------------------------------------- AI: meal */') + '\n' + slice(app, '  for (const id of ["calories", "protein", "fat", "carbs"])', '  for (const id of ["mealName", "portion"])') + `
       const portionUnit = () => element('portionUnit').value;
       const setAutomaticPortionUnit = () => { if (element('nutritionBasis100').checked) setPortionUnit('г'); };
