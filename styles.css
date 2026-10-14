@@ -263,4 +263,7 @@ button.meal-calculate-action:not(:disabled):hover,button.meal-calculate-action:n
 [data-theme="dark"] .nav[data-nav="assistant"] span{color:var(--green)}
 [data-theme="dark"] .toast{background:#dcece2;color:#14231e}
 .external-ai-help { display:block; margin:8px 0 12px; text-align:left; }
+.android-download h2 { margin:0 0 8px; font-size:18px; }
+.android-download-link { display:inline-block; margin:8px 0 12px; padding:12px 16px; border-radius:14px; background:var(--green); color:var(--paper); font-weight:700; text-decoration:none; }
+.android-download small { display:block; }
 .pull-refresh-indicator { position:fixed; z-index:12; top:env(safe-area-inset-top, 0px); left:50%; max-width:90vw; padding:10px 16px; border:1px solid var(--line); border-radius:18px; background:var(--paper); color:var(--ink); box-shadow:0 4px 16px #0002; font-size:13px; pointer-events:none; }

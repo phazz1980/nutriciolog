@@ -5,7 +5,7 @@ import { hasStore, has, call, loadProfile as loadStoredProfile, accountDefaults,
 import { toast, setText, showScreen, openModal, closeModal, openDialog, showAiDiagnostic, removeAiDiagnostic, setAiDebug, clearAiDebug, showCalculationResult } from "./ui.js";
 import { askAi, getAiToken, requestAiAdvice, clearErrors, clearServiceError, availability } from "./ai-client.js";
 import { initAiAvailability } from "./ai-availability.js";
-import { initDailyAdvice } from "./daily-advice.js?release=v0.4.9";
+import { initDailyAdvice } from "./daily-advice.js?release=v0.4.10";
 import { initAiQuota } from "./ai-quota.js";
 import { initHealthConnect, getHealthWeight } from "./health-connect.js";
 import "./wear-pairing.js";
@@ -752,6 +752,8 @@ function setAutomaticPortionUnit() {
 }
 
 function openMeal() {
+  clearMealSuggestions();
+  skipMealSuggestionsOnFocus = false;
   openModal("modal");
   if (lastSelectedMealType) element("mealType").value = lastSelectedMealType;
 }
@@ -813,6 +815,7 @@ function showMealJsonHelp() {
 }
 
 function closeMeal() {
+  clearMealSuggestions();
   closeModal("modal");
 }
 
@@ -933,15 +936,24 @@ function saveMeal(event) {
 
 const suggestions = () => element("mealNameSuggestions");
 
+function clearMealSuggestions() {
+  const container = suggestions();
+  container?.replaceChildren();
+  if (container) container.hidden = true;
+  element("mealName")?.setAttribute("aria-expanded", "false");
+}
+
 function renderMealSuggestions(products) {
   const container = suggestions();
   const input = element("mealName");
   if (!container) return;
-  container.replaceChildren();
+  clearMealSuggestions();
   const query = normalizeTitle(parsePortionDescription(input?.value).title);
+  // Late reads must not reopen suggestions for an empty or closed form.
+  if (!query || !element("modal")?.classList.contains("show") || document.activeElement !== input) return;
   const unique = [...new Map(products.map(product => [normalizeTitle(product.title), product])).values()];
   const matches = unique
-    .filter(product => !query || matchingProducts([product], input?.value).length)
+    .filter(product => matchingProducts([product], input?.value).length)
     .sort((left, right) => left.title.localeCompare(right.title, "ru"))
     .slice(0, 30);
   for (const product of matches) {
@@ -1800,16 +1812,19 @@ function initMealForm() {
       skipMealSuggestionsOnFocus = false;
       return;
     }
+    if (!name.value.trim()) { clearMealSuggestions(); return; }
     loadMealSuggestions().then(() => renderMealSuggestions(savedMealProducts));
   });
   name.addEventListener("change", () => {
     if (!recognizedManualMealEstimate?.importedJson) applySavedMealProduct();
   });
   name.addEventListener("input", () => {
+    skipMealSuggestionsOnFocus = false;
     if (importMealJson(name.value, { reportError: false })) return;
     savedMealEstimate = null;
     recognizedManualMealEstimate = null;
     renderMealSuggestions(savedMealProducts);
+    if (!name.value.trim()) return;
     // A first read or a background update may have completed while typing.
     loadMealSuggestions().then(() => {
       if (document.activeElement === name) renderMealSuggestions(savedMealProducts);
@@ -1935,6 +1950,8 @@ function boot() {
   // initMealForm перестраивает кнопку расчёта, поэтому доступность ИИ
   // рассчитывается уже после неё и видит итоговую разметку.
   initNavigation();
+  const androidDownloadCard = element("androidDownloadCard");
+  if (androidDownloadCard) androidDownloadCard.hidden = Boolean(window.Capacitor?.isNativePlatform?.());
   initMealForm();
   initPhotoInputs();
   initPlan();
