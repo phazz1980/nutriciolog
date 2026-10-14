@@ -8,7 +8,8 @@ test('Cost panel is restricted and cleared when switching accounts; quota stays 
     .replace(/^import .*;\r?\n/gm, '').replace('export function', 'function');
   const element = () => ({ children: [], append(...items) { this.children.push(...items); },
     replaceChildren() { this.children = []; }, after() {} });
-  const nodes = { aiQuotaStatus: element(), aiQuotaDetail: element(), refreshAiQuotaButton: element() };
+  const nodes = { aiQuotaStatus: element(), aiQuotaDetail: element(), aiQuotaHelp: element(), refreshAiQuotaButton: element() };
+  assert.ok(readFileSync(new URL('../index.html', import.meta.url), 'utf8').includes('id="aiQuotaHelp"'));
   let auth = { signedIn: true }, email = 'other@example.com', render, panel;
   const context = vm.createContext({
     document: { getElementById: id => nodes[id], querySelectorAll: () => [],

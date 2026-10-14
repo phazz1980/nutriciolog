@@ -5,7 +5,7 @@ import { hasStore, has, call, loadProfile as loadStoredProfile, accountDefaults,
 import { toast, setText, showScreen, openModal, closeModal, openDialog, showAiDiagnostic, removeAiDiagnostic, setAiDebug, clearAiDebug, showCalculationResult } from "./ui.js";
 import { askAi, getAiToken, requestAiAdvice, clearErrors, clearServiceError, availability } from "./ai-client.js";
 import { initAiAvailability } from "./ai-availability.js";
-import { initDailyAdvice } from "./daily-advice.js?release=v0.4.10";
+import { initDailyAdvice } from "./daily-advice.js?release=v0.4.11";
 import { initAiQuota } from "./ai-quota.js";
 import { initHealthConnect, getHealthWeight } from "./health-connect.js";
 import "./wear-pairing.js";
@@ -509,9 +509,6 @@ function renderProfile() {
     }
   }
   setText("profileSummary", profileDetailsReady ? ` · ${currentProfile.age} лет · ${formatNumber(currentProfile.height)} см · ${formatNumber(currentProfile.weight)} кг` : "Добавьте свои данные через «Изменить».");
-  setText("profileGoal", profileDetailsReady ? currentProfile.goal : "Не задана");
-  setText("profileRate", profileDetailsReady ? `Цель: ${formatNumber(currentProfile.targetWeight)} кг` : "Заполните профиль");
-  setText("profileCalories", profileDetailsReady ? `${formatNumber(currentProfile.calories)} ккал` : "Не задана");
   setText("releaseInfo", `Версия ${APP_VERSION}`);
   renderNutrition();
   renderPlan();
@@ -1831,8 +1828,9 @@ function initMealForm() {
     });
   });
   name.addEventListener("blur", () => window.setTimeout(() => {
-    suggestionsBox.hidden = true;
-    name.setAttribute("aria-expanded", "false");
+    // An earlier blur must not hide a new query after reopening/refocusing.
+    if (document.activeElement === name) return;
+    clearMealSuggestions();
   }, 120));
 }
 
@@ -1877,7 +1875,6 @@ function initNavigation() {
   element("addWaterButton").onclick = addWater;
   element("addWeightButton").onclick = addWeight;
   element("editProfileButton").onclick = openProfileEditor;
-  element("editProfileCaloriesButton").onclick = openProfileEditor;
   document.querySelector("#profileModal form").addEventListener("submit", saveProfile);
   element("profileCancelButton").onclick = closeProfileEditor;
   element("micButton").onclick = toggleVoice;
