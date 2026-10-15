@@ -1,4 +1,4 @@
-const CACHE = "my-nutritionist-shell-v85";
+const CACHE = "my-nutritionist-shell-v86";
 const SHELL = [
   "./",
   "./index.html",
@@ -8,10 +8,11 @@ const SHELL = [
   "./manifest.webmanifest",
   "./icons/app-icon.svg",
   "./icons/nutritionist-logo.png",
+  "./js/android-update.js",
   "./js/app.js",
-  "./js/app.js?release=v0.4.13",
-  "./js/daily-advice.js?release=v0.4.13",
-  "./js/ai-announcement.js?release=v0.4.13",
+  "./js/app.js?release=v0.4.14",
+  "./js/daily-advice.js?release=v0.4.14",
+  "./js/ai-announcement.js?release=v0.4.14",
   "./js/ai-availability.js",
   "./js/ai-client.js",
   "./js/ai-announcement.js",

@@ -46,6 +46,7 @@ jobs:
           mkdir -p deploy
           cp index.html deploy/
           cp ai-status.json deploy/
+          cp android-release.json deploy/
           cp styles.css deploy/
           cp -r js deploy/
           cp firebase-client.js deploy/
@@ -60,7 +61,13 @@ jobs:
         run: |
           aws s3 sync deploy/ s3://nutriciolog-x20/ \
             --endpoint-url=https://storage.yandexcloud.net \
-            --delete
+            --delete --exclude "android-release.json"
+
+      - name: Publish fresh Android update metadata
+        run: |
+          aws s3 cp android-release.json s3://nutriciolog-x20/android-release.json \
+            --endpoint-url=https://storage.yandexcloud.net \
+            --cache-control="no-store" --content-type="application/json"
 
       - name: Tag published version
         run: |

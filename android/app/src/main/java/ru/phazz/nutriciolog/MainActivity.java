@@ -11,6 +11,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(CredentialAutofillPlugin.class);
         registerPlugin(AppearancePlugin.class);
         registerPlugin(ShareImagePlugin.class);
+        registerPlugin(AppUpdatePlugin.class);
         super.onCreate(savedInstanceState);
         if (getBridge() != null) {
             getBridge().getWebView().setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_YES);

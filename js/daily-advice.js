@@ -2,7 +2,7 @@ import { todayKey } from "./date.js";
 import { nutritionTargets } from "./core.js";
 import { accountDefaults, call, onAuthChanged, onStoreReady } from "./storage.js";
 import { askAi } from "./ai-client.js";
-import { activeAnnouncement, refreshAnnouncement } from "./ai-announcement.js?release=v0.4.13";
+import { activeAnnouncement, refreshAnnouncement } from "./ai-announcement.js?release=v0.4.14";
 
 export function menuAdviceMessage(entries) {
   const menu = (entries || []).map(entry => ({
@@ -63,7 +63,28 @@ export function initDailyAdvice() {
   const text = document.getElementById("dailyAdviceText");
   const retry = document.getElementById("retryDailyAdvice");
   if (!card || !text) return;
-  let active = "", pending = "", revision = 0, profileStamp = "";
+  let active = "", pending = "", revision = 0, profileStamp = "", identity = 0;
+  // A paid attempt must not depend on localStorage or event timing for deduplication.
+  const replies = new Map();
+  const attempted = new Set();
+  const dailyLimit = 4;
+  const reserveAttempt = async key => {
+    const reserve = () => {
+      try {
+        const countKey = key + ":attempts";
+        const saved = localStorage.getItem(countKey);
+        const count = saved === null ? 0 : JSON.parse(saved).count;
+        if (!Number.isSafeInteger(count) || count < 0) return "unavailable";
+        if (count >= dailyLimit) return "limit";
+        const next = JSON.stringify({ count: count + 1 });
+        localStorage.setItem(countKey, next);
+        return localStorage.getItem(countKey) === next ? "ok" : "unavailable";
+      } catch { return "unavailable"; }
+    };
+    // Android has one WebView; Web Locks also serialize reservations between browser tabs.
+    try { return navigator.locks?.request ? await navigator.locks.request(key + ":lock", reserve) : reserve(); }
+    catch { return "unavailable"; }
+  };
   const heading = card.querySelector("h2");
   const label = card.querySelector(".daily-advice-label");
   const footer = card.querySelector(".daily-advice-footer");
@@ -89,7 +110,7 @@ export function initDailyAdvice() {
     }
     return false;
   };
-  const refresh = async () => {
+  const refresh = async (force = false) => {
     await refreshAnnouncement();
     if (showNotice()) return;
     const uid = accountDefaults().uid;
@@ -98,6 +119,7 @@ export function initDailyAdvice() {
     if (key !== active) { active = key; card.hidden = true; text.textContent = ""; }
     if (!uid || pending === key) return;
     const requestRevision = revision;
+    const requestIdentity = identity;
     try {
       pending = key;
       if (retry) retry.hidden = true;
@@ -115,14 +137,43 @@ export function initDailyAdvice() {
       if (showNotice()) return;
       const fingerprint = Array.from(new Uint8Array(digest), n => n.toString(16).padStart(2, '0')).join('');
       if (accountDefaults().uid !== uid || todayKey() !== date || active !== key || revision !== requestRevision) return;
-      if (saved?.advice && saved.fingerprint === fingerprint) return;
+      const attemptKey = key + ":" + fingerprint;
+      const cached = replies.get(attemptKey) || (saved?.advice && saved.fingerprint === fingerprint ? saved : null);
+      if (cached) {
+        replies.set(attemptKey, cached);
+        text.textContent = cached.advice; card.hidden = false;
+        return;
+      }
+      if (!force && (attempted.has(attemptKey) || saved?.attemptedFingerprint === fingerprint)) {
+        card.hidden = false;
+        text.textContent = "Совет сейчас недоступен. Задать вопрос можно на экране «Совет».";
+        if (retry) retry.hidden = false;
+        return;
+      }
+      // Persist before sending: restarting the app after a failed/unfinished request must not spend another slot.
+      const reservation = await reserveAttempt(key);
+      if (reservation !== "ok") {
+        card.hidden = false;
+        text.textContent = reservation === "limit"
+          ? "На сегодня использованы все 4 автоматических совета. Новый лимит — завтра. Задать вопрос можно на экране «Совет»."
+          : "Автоматический совет недоступен: не удалось сохранить дневной счётчик. Задать вопрос можно на экране «Совет».";
+        if (retry) retry.hidden = true;
+        return;
+      }
+      if (accountDefaults().uid !== uid || todayKey() !== date || identity !== requestIdentity || active !== key) return;
+      attempted.add(attemptKey);
+      try { localStorage.setItem(key, JSON.stringify({ ...saved, attemptedFingerprint: fingerprint })); } catch {}
       card.hidden = false; text.textContent = "Готовим короткий совет по сегодняшнему меню…";
       const result = await askAi({ message: dailyAdvicePrompt(entries || [], products || [], profile || {}) });
       if (showNotice()) return;
-      if (accountDefaults().uid !== uid || todayKey() !== date || active !== key || revision !== requestRevision) return;
+      if (accountDefaults().uid !== uid || todayKey() !== date || active !== key || identity !== requestIdentity) return;
       const advice = result.status === "ok" && typeof result.data?.advice === "string" ? result.data.advice.trim().slice(0, 1600) : "";
       if (!advice) throw new Error("Advice unavailable");
-      try { localStorage.setItem(key, JSON.stringify({ advice, fingerprint })); } catch {}
+      const reply = { advice, fingerprint };
+      replies.set(attemptKey, reply);
+      try { localStorage.setItem(key, JSON.stringify(reply)); } catch {}
+      // A read event during the request can invalidate rendering, but never its paid result.
+      if (revision !== requestRevision) return;
       text.textContent = advice;
     } catch {
       if (showNotice()) return;
@@ -136,9 +187,9 @@ export function initDailyAdvice() {
     }
   };
   const run = () => { refresh().catch(() => {}); };
-  if (retry) retry.onclick = run;
+  if (retry) retry.onclick = () => { refresh(true).catch(() => {}); };
   const changed = () => { revision++; run(); };
-  onAuthChanged(() => { profileStamp = ""; changed(); }); onStoreReady(run);
+  onAuthChanged(() => { identity++; profileStamp = ""; changed(); }); onStoreReady(run);
   window.addEventListener("nutrition-profile-updated", event => {
     if (event.detail?.uid !== accountDefaults().uid) return;
     const stamp = `${event.detail.uid}:${number(event.detail.profile?.calories)}`;
