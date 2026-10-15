@@ -2,9 +2,9 @@
 
 ## Выпуск Web и APK 0.4.13 (2026-10-15)
 
-Готов к публикации общий клиент 0.4.13/code28/shell-v85: новый порядок профиля и функции фото/Android «Поделиться» из опубликованной 0.4.12. Ссылка в Профиле — downloads/nutriciolog-0.4.13.apk; прежние APK сохранены. Подпись совпадает с 0.4.11 (SHA256 сертификата 36d8ba3d5df318dfd58572ea5589c758f7be361f3278d19c46b579eb6d31fba0). aapt: min26/target35; apksigner verify успешен. APK SHA256 04A96EB600D5D6D1B31B7B7D686817EB7AE2677C7E35B777B3DB91B1DF91F457.
+Опубликован общий клиент 0.4.13/code28/shell-v85: новый порядок профиля и функции фото/Android «Поделиться» из опубликованной 0.4.12. Ссылка в Профиле — downloads/nutriciolog-0.4.13.apk; прежние APK сохранены. Подпись совпадает с 0.4.11 (SHA256 сертификата 36d8ba3d5df318dfd58572ea5589c758f7be361f3278d19c46b579eb6d31fba0). aapt: min26/target35; apksigner verify успешен. APK SHA256 04A96EB600D5D6D1B31B7B7D686817EB7AE2677C7E35B777B3DB91B1DF91F457.
 
-Проверки: android:sync/assembleDebug --offline успешны (GRADLE_USER_HOME=%TEMP%/nutriciolog-gradle), shared-client 5/5, unit 100 passed/1 optional skipped, полный auth-network прошёл. Шесть ключевых assets совпадают с исходниками; приватных файлов/ключей в APK нет. Установка телефона и приёмка Android «Поделиться» на устройстве остаются пользователю. Следующий шаг — push main/tag, успешный Deploy/CI и проверка публичного APK.
+Проверки: android:sync/assembleDebug --offline успешны (GRADLE_USER_HOME=%TEMP%/nutriciolog-gradle), shared-client 5/5, unit 100 passed/1 optional skipped, полный auth-network прошёл. Шесть ключевых assets совпадают с исходниками; приватных файлов/ключей в APK нет. Установка телефона и приёмка Android «Поделиться» на устройстве остаются пользователю. d8c9ef7/v0.4.13 отправлены в main. Deploy 38780637249 и CI 38780637333/38780637738 — success. Публичный APK: HTTP 200, MIME application/vnd.android.package-archive, 9640854 bytes, SHA256 совпадает. Шесть публичных файлов совпадают с байтами релизного Git-коммита; локальные CRLF в share-image.js отличаются только переводами строк. Следующий шаг — установка поверх приложения и приёмка Android «Поделиться» пользователем.
 
 
 ## Web 0.4.12 опубликован; APK остаётся 0.4.11 (2026-10-15)
