@@ -33,7 +33,7 @@ export function initAiAvailability() {
       button.title = reason || button.dataset.readyTitle || "";
     }
     const send = document.querySelector("#assistant .send");
-    if (send) send.disabled = busy;
+    if (send) send.disabled = busy || send.dataset.composerBusy === "true";
 
     setHint(document.querySelector("#assistant .ask"), "aiAvailabilityStatus", reason);
     setHint(document.querySelector(".meal-name-control"), "aiMealAvailabilityStatus", reason, { inlineHint: true });

@@ -34,10 +34,12 @@ test('PWA shell references existing files and does not cache health/user data or
   assert.ok(!shell.includes('.apk'));
 });
 
-test('APK download matches shared version and is not bundled recursively into Android', async () => {
-  const version=(await source('js/core.js')).match(/APP_VERSION = "v([^"]+)"/)[1];
+test('APK download matches its displayed version, exists and is not bundled into Android', async () => {
   const html=await source('index.html');
+  const version = html.match(/Тестовая версия ([\d.]+)/)[1];
   assert.ok(html.includes(`/downloads/nutriciolog-${version}.apk`));
+  const apk = await readFile(new URL(`downloads/nutriciolog-${version}.apk`, root));
+  assert.equal(apk.subarray(0, 2).toString(), 'PK');
   assert.ok((await source('.github/workflows/deploy-yandex.yml')).includes('cp -r downloads deploy/'));
   assert.ok(!(await source('scripts/build-android-web.mjs')).includes('"downloads"'));
 });

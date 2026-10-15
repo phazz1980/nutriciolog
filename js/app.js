@@ -5,7 +5,7 @@ import { hasStore, has, call, loadProfile as loadStoredProfile, accountDefaults,
 import { toast, setText, showScreen, openModal, closeModal, openDialog, showAiDiagnostic, removeAiDiagnostic, setAiDebug, clearAiDebug, showCalculationResult } from "./ui.js";
 import { askAi, getAiToken, requestAiAdvice, clearErrors, clearServiceError, availability } from "./ai-client.js";
 import { initAiAvailability } from "./ai-availability.js";
-import { initDailyAdvice } from "./daily-advice.js?release=v0.4.11";
+import { initDailyAdvice } from "./daily-advice.js?release=v0.4.12";
 import { initAiQuota } from "./ai-quota.js";
 import { initHealthConnect, getHealthWeight } from "./health-connect.js";
 import "./wear-pairing.js";
@@ -13,6 +13,7 @@ import "./native-appearance.js";
 import { initPullRefresh } from './pull-refresh.js';
 import { createMealTimeline } from "./timeline.js";
 import { preparePhoto, openPhotoPicker } from "./photo-picker.js";
+import { initShareImage } from "./share-image.js";
 import { showPhotoRecognitionDialog, parseMealEstimate, fillMealForm, setFormNutrition, clearFormNutrition, readFormNutrition, toastPhotoTransfer } from "./photo.js";
 
 /* ------------------------------------------------------------------ state */
@@ -38,6 +39,10 @@ let waterTimer = null;
 let weightHistory = [];
 
 let selectedPhoto = null;
+let photoSelectionVersion = 0;
+let photoPreparing = false;
+let adviceSending = false;
+let sharedAdvicePending = false;
 let editingPlan = null;
 let lastSelectedMealType = "";
 let lastCalculatedUnitWeight = null;
@@ -1489,18 +1494,25 @@ async function showProductProposals(products) {
 async function requestAdvice(event) {
   event?.preventDefault();
   const text = element("question").value.trim();
-  if (!text) return;
-  if (importMealJson(text, { fromAdvice: true })) return;
-  const hadPhoto = Boolean(selectedPhoto);
+  if (adviceSending || photoPreparing || (!text && !selectedPhoto)) return;
+  if (!selectedPhoto && importMealJson(text, { fromAdvice: true })) return;
+  const photo = selectedPhoto;
+  const photoVersion = photoSelectionVersion;
+  const hadPhoto = Boolean(photo);
+  const message = text || "Определи блюдо на фото и оцени калории, белки, жиры и углеводы.";
+  const fromShare = sharedAdvicePending;
+  sharedAdvicePending = false;
+  adviceSending = true;
+  updateAdviceSubmitState();
   removeAiDiagnostic("aiResponseDiagnostic");
-  appendBubble("bubble user", text);
+  appendBubble("bubble user", text || "Изображение блюда");
   element("question").value = "";
   setText("chatStatus", "Формирую ответ…");
   setAiDebug("запрос отправлен");
   try {
     const result = await askAi({
-      message: text,
-      image: selectedPhoto,
+      message,
+      image: photo,
       timeline: hadPhoto ? createMealTimeline("photo") : null,
     });
     if (result.status === "no-token") return;
@@ -1517,16 +1529,27 @@ async function requestAdvice(event) {
     setAiDebug("Worker ответил успешно");
     appendBubble("bubble", result.data.advice);
     setText("chatStatus", "Ответ носит справочный характер.");
-    if (hadPhoto) openPhotoMealInAddForm(result.data);
-    else {
-      if (result.data.proposedProducts) await showProductProposals(result.data.proposedProducts);
-      if (result.data.proposedMeal) showMealProposal(result.data.proposedMeal);
+    if (!sharedAdvicePending) {
+      if (fromShare) {
+        const products = result.data.proposedProducts?.length
+          ? result.data.proposedProducts
+          : result.data.proposedMeal ? [result.data.proposedMeal] : [];
+        await showProductProposals(products);
+      } else if (hadPhoto) openPhotoMealInAddForm(result.data);
+      else {
+        if (result.data.proposedProducts) await showProductProposals(result.data.proposedProducts);
+        if (result.data.proposedMeal) showMealProposal(result.data.proposedMeal);
+      }
     }
-    removePhoto();
+    if (selectedPhoto === photo && photoSelectionVersion === photoVersion) removePhoto();
     speak(result.data.advice);
   } catch (error) {
     if (!element("aiDebug")?.textContent.includes("HTTP")) setAiDebug("ошибка запроса");
     setText("chatStatus", `Не удалось получить ответ: ${error.message}`);
+  } finally {
+    adviceSending = false;
+    updateAdviceSubmitState();
+    if (sharedAdvicePending) void requestAdvice();
   }
 }
 
@@ -1642,22 +1665,36 @@ function showAuthRequiredDialog() {
 
 /* ------------------------------------------------------------------ photo */
 
+function updateAdviceSubmitState() {
+  const send = document.querySelector("#askForm .ask-send-action");
+  send.dataset.composerBusy = String(adviceSending || photoPreparing);
+  send.disabled = adviceSending || photoPreparing || availability().busy;
+}
+
 async function selectPhoto(file) {
-  if (!file) {
-    selectedPhoto = null;
-    element("photoPreview").style.display = "none";
-    return;
-  }
+  // Cancelling the picker keeps the current attachment.
+  if (!file) return;
   if (file.size > MAX_PHOTO_BYTES) {
     toast("Фото должно быть не больше 4 МБ");
     element("mealPhoto").value = "";
     return;
   }
+  const version = ++photoSelectionVersion;
+  photoPreparing = true;
+  updateAdviceSubmitState();
   try {
-    selectedPhoto = await preparePhoto(file);
+    const photo = await preparePhoto(file);
+    if (version !== photoSelectionVersion) return;
+    selectedPhoto = photo;
     const preview = element("photoPreview");
     preview.replaceChildren();
-    preview.append(`Фото: ${file.name} `);
+    const thumbnail = document.createElement("img");
+    thumbnail.src = photo.dataUrl;
+    thumbnail.alt = "Прикреплённое изображение блюда";
+    thumbnail.width = 96;
+    thumbnail.height = 96;
+    thumbnail.style.cssText = "object-fit:cover;border-radius:12px;vertical-align:middle;margin-right:8px";
+    preview.append(thumbnail, `Фото: ${file.name} `);
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "link";
@@ -1665,15 +1702,27 @@ async function selectPhoto(file) {
     remove.onclick = removePhoto;
     preview.append(remove);
     preview.style.display = "block";
+    return true;
   } catch {
-    toast("Не удалось прочитать фото. Попробуйте другое изображение.");
+    if (version === photoSelectionVersion) toast("Не удалось прочитать фото. Попробуйте другое изображение.");
+  } finally {
+    if (version === photoSelectionVersion) {
+      photoPreparing = false;
+      element("mealPhoto").value = "";
+      updateAdviceSubmitState();
+    }
   }
 }
 
 function removePhoto() {
+  sharedAdvicePending = false;
+  ++photoSelectionVersion;
+  photoPreparing = false;
   selectedPhoto = null;
   element("mealPhoto").value = "";
+  element("photoPreview").replaceChildren();
   element("photoPreview").style.display = "none";
+  updateAdviceSubmitState();
 }
 
 /* ------------------------------------------------------------- lifecycle */
@@ -1951,6 +2000,16 @@ function boot() {
   if (androidDownloadCard) androidDownloadCard.hidden = Boolean(window.Capacitor?.isNativePlatform?.());
   initMealForm();
   initPhotoInputs();
+  void initShareImage({
+    onImage: async file => {
+      showScreen("assistant");
+      if (await selectPhoto(file)) {
+        sharedAdvicePending = true;
+        await requestAdvice();
+      }
+    },
+    onError: message => toast(message),
+  });
   initPlan();
   initDiaryCalendar();
   initViewport();

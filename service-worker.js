@@ -1,4 +1,4 @@
-const CACHE = "my-nutritionist-shell-v83";
+const CACHE = "my-nutritionist-shell-v84";
 const SHELL = [
   "./",
   "./index.html",
@@ -9,9 +9,9 @@ const SHELL = [
   "./icons/app-icon.svg",
   "./icons/nutritionist-logo.png",
   "./js/app.js",
-  "./js/app.js?release=v0.4.11",
-  "./js/daily-advice.js?release=v0.4.11",
-  "./js/ai-announcement.js?release=v0.4.11",
+  "./js/app.js?release=v0.4.12",
+  "./js/daily-advice.js?release=v0.4.12",
+  "./js/ai-announcement.js?release=v0.4.12",
   "./js/ai-availability.js",
   "./js/ai-client.js",
   "./js/ai-announcement.js",
@@ -24,6 +24,7 @@ const SHELL = [
   "./js/health-data.js",
   "./js/health-nutrition.js",
   "./js/photo-picker.js",
+  "./js/share-image.js",
   "./js/photo.js",
   "./js/storage.js",
   "./js/timeline.js",

@@ -9,10 +9,31 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Validate shared client and Android compilation
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run test:shared-client
+          node --test tests/*.test.mjs
+          npm run android:sync
+          cd android
+          bash gradlew :app:compileDebugJavaWithJavac --no-daemon
 
       - name: Configure AWS CLI
         run: |
@@ -40,3 +61,12 @@ jobs:
           aws s3 sync deploy/ s3://nutriciolog-x20/ \
             --endpoint-url=https://storage.yandexcloud.net \
             --delete
+
+      - name: Tag published version
+        run: |
+          version=$(node -e 'const fs=require("node:fs");console.log(fs.readFileSync("js/core.js","utf8").match(/APP_VERSION = "(v[0-9]+\.[0-9]+\.[0-9]+)"/)[1])')
+          git fetch origin "refs/tags/$version:refs/tags/$version" || true
+          if ! git rev-parse "refs/tags/$version" >/dev/null 2>&1; then
+            git tag "$version" "$GITHUB_SHA"
+            git push origin "refs/tags/$version"
+          fi
