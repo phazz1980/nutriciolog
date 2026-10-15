@@ -5,11 +5,12 @@ import { hasStore, has, call, loadProfile as loadStoredProfile, accountDefaults,
 import { toast, setText, showScreen, openModal, closeModal, openDialog, showAiDiagnostic, removeAiDiagnostic, setAiDebug, clearAiDebug, showCalculationResult } from "./ui.js";
 import { askAi, getAiToken, requestAiAdvice, clearErrors, clearServiceError, availability } from "./ai-client.js";
 import { initAiAvailability } from "./ai-availability.js";
-import { initDailyAdvice } from "./daily-advice.js?release=v0.4.13";
+import { initDailyAdvice } from "./daily-advice.js?release=v0.4.14";
 import { initAiQuota } from "./ai-quota.js";
 import { initHealthConnect, getHealthWeight } from "./health-connect.js";
 import "./wear-pairing.js";
 import "./native-appearance.js";
+import "./android-update.js";
 import { initPullRefresh } from './pull-refresh.js';
 import { createMealTimeline } from "./timeline.js";
 import { preparePhoto, openPhotoPicker } from "./photo-picker.js";
@@ -1997,7 +1998,12 @@ function boot() {
   // рассчитывается уже после неё и видит итоговую разметку.
   initNavigation();
   const androidDownloadCard = element("androidDownloadCard");
-  if (androidDownloadCard) androidDownloadCard.hidden = Boolean(window.Capacitor?.isNativePlatform?.());
+  const androidBrowser = navigator.userAgentData?.platform
+    ? navigator.userAgentData.platform.toLowerCase() === "android"
+    : /Android/i.test(navigator.userAgent || "");
+  const nativeApp = Boolean(window.Capacitor?.isNativePlatform?.())
+    || ["android", "ios"].includes(window.Capacitor?.getPlatform?.());
+  if (androidDownloadCard) androidDownloadCard.hidden = nativeApp || !androidBrowser;
   initMealForm();
   initPhotoInputs();
   void initShareImage({

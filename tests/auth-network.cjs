@@ -64,6 +64,7 @@ export const serverTimestamp=()=>0;
       page.on('pageerror', error => errors.push(error.message));
       await page.addInitScript(opts => {
         window.test = { ...opts, user: null, popupCalls: 0, writes: [], profileReads: [] };
+        if (opts.platform) Object.defineProperty(navigator, 'userAgentData', { value: { platform: opts.platform }, configurable: true });
         // The app renders provider-dependent UI, so mock users need the fields Firebase always sends.
         window.test.prepareUser = user => user && { providerData: [], emailVerified: true, ...user };
         localStorage.setItem('my-nutritionist:profile:main:', JSON.stringify({ name: 'Guest' }));
@@ -511,15 +512,15 @@ export const serverTimestamp=()=>0;
       assert.equal(await page.locator('.meal-suggestion',{hasText:'Сыр российский'}).count(),0);
       assert.equal(await name.evaluate(node=>document.activeElement===node),true);
     });
-    await check('Android APK link is available in web profile without signing in', {}, async ({page}) => {
+    await check('Android APK link is available in Android web profile without signing in', {platform:'Android'}, async ({page}) => {
       await page.locator('.nav[data-nav="profile"]').click();
       const link=page.locator('#androidDownloadLink');
       assert.equal(await link.isVisible(),true);
       assert.equal(await page.locator('#profile > .profile').evaluate(node=>node.nextElementSibling.classList.contains('theme-settings')),true);
       assert.equal(await page.locator('#aiQuotaTitle').evaluate(node=>node.closest('section')===document.getElementById('profile').lastElementChild),true);
-      assert.equal(await link.getAttribute('href'),'https://nutriciolog-x20.website.yandexcloud.net/downloads/nutriciolog-0.4.13.apk');
-      assert.equal(await link.getAttribute('download'),'nutriciolog-0.4.13.apk');
-      assert.match(await page.locator('#androidDownloadCard').textContent(), /Тестовая версия 0.4.13/);
+      assert.equal(await link.getAttribute('href'),'https://nutriciolog-x20.website.yandexcloud.net/downloads/nutriciolog-0.4.14.apk');
+      assert.equal(await link.getAttribute('download'),'nutriciolog-0.4.14.apk');
+      assert.match(await page.locator('#androidDownloadCard').textContent(), /Тестовая версия 0.4.14/);
       const installHelp=page.locator('#androidInstallHelp');
       assert.equal(await installHelp.locator('small').isVisible(),false);
       await installHelp.locator('summary').click();
@@ -536,6 +537,12 @@ export const serverTimestamp=()=>0;
         assert.ok(await page.locator('#androidDownloadCard').evaluate(card=>card.scrollWidth<=card.clientWidth));
       }
     });
+    for (const platform of ['Windows', 'macOS', 'iOS']) {
+      await check('APK download is hidden in web profile on ' + platform, {platform}, async ({page}) => {
+        await page.locator('.nav[data-nav="profile"]').click();
+        assert.equal(await page.locator('#androidDownloadCard').isVisible(), false);
+      });
+    }
     await check('Suggestions require a nonempty query and stay cleared after saving/reopening', {products:[{title:'Суп из базы',portion:200,calories:400,protein:20,fat:10,carbs:40}]}, async ({page}) => {
       await page.evaluate(()=>window.test.setUser({uid:'empty-suggestions-user',getIdToken:async()=>'test-token'}));
       await page.locator('#todayAddMealButton').click();
@@ -719,6 +726,33 @@ export const serverTimestamp=()=>0;
       assert.equal(posts,2);
       assert.equal(await page.evaluate(()=>window.test.writes.length),0);
       await page.screenshot({path:require('node:os').tmpdir()+'/nutrition-advice.png',fullPage:true});
+    });
+
+    await check('Android automatic advice never exceeds four attempts, including after reload', {platform:'Android'}, async ({page}) => {
+      let posts=0;
+      await page.route('https://functions.yandexcloud.net/**', async route => {
+        if(route.request().postDataJSON().action==='usage') return route.fulfill({json:{}});
+        posts++;
+        await route.fulfill({json:{advice:'Совет номер '+posts}});
+      });
+      await page.evaluate(()=>window.test.setUser({uid:'android-daily-limit',getIdToken:async()=> 'test-token'}));
+      await page.waitForFunction(()=>document.getElementById('dailyAdviceText').textContent==='Совет номер 1');
+      for(let i=1;i<=4;i++) {
+        await page.evaluate(i=>{
+          window.nutritionStore.loadDiaryEntries=async()=>[{title:'Новое блюдо '+i,calories:i*100}];
+          const date=new Date(),scope=[date.getFullYear(),String(date.getMonth()+1).padStart(2,'0'),String(date.getDate()).padStart(2,'0')].join('-');
+          window.dispatchEvent(new CustomEvent('nutrition-data-updated',{detail:{uid:'android-daily-limit',collection:'foodDiary',scope}}));
+        },i);
+        await page.waitForFunction(i=>document.getElementById('dailyAdviceText').textContent.includes(i<4?'Совет номер '+(i+1):'все 4'),i);
+      }
+      assert.equal(posts,4);
+      await page.reload();
+      await page.waitForFunction(()=>Boolean(window.test.setUser));
+      await page.evaluate(()=>window.test.setUser({uid:'android-daily-limit',getIdToken:async()=> 'test-token'}));
+      await page.waitForFunction(()=>document.getElementById('dailyAdviceText').textContent.includes('все 4'));
+      await page.evaluate(()=>{window.dispatchEvent(new Event('focus'));window.dispatchEvent(new Event('online'));});
+      await page.waitForTimeout(200);
+      assert.equal(posts,4);
     });
 
     await check('Estimated AI costs show USD, partial totals and clear on logout', {}, async ({page}) => {

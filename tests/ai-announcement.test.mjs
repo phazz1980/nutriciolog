@@ -48,6 +48,7 @@ async function fixture(uid) {
   const footer = { hidden: false }, retry = { hidden: true }, text = { textContent: "" };
   const card = { hidden: true, querySelector: s => ({ h2: heading, ".daily-advice-label": label, ".daily-advice-footer": footer })[s] };
   let active = notice, calls = 0, interval;
+  const saved = new Map();
   const context = {
     document: { getElementById: id => ({ dailyAdvice: card, dailyAdviceText: text, retryDailyAdvice: retry })[id] },
     todayKey: () => "2026-10-11", accountDefaults: () => ({ uid }),
@@ -55,7 +56,7 @@ async function fixture(uid) {
     activeAnnouncement: () => active, refreshAnnouncement: async () => active,
     call: async () => [], askAi: async () => { calls++; return { status: "ok", data: { advice: "Совет" } }; },
     onAuthChanged: () => {}, onStoreReady: () => {}, navigator: { onLine: true },
-    localStorage: { getItem: () => null, setItem: () => {} },
+    localStorage: { getItem: key => saved.get(key) || null, setItem: (key, value) => saved.set(key, value) },
     window: { addEventListener: () => {}, setInterval: fn => { interval = fn; } },
     TextEncoder, crypto: webcrypto,
   };
