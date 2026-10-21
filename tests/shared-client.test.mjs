@@ -38,9 +38,12 @@ test('APK download matches its displayed version, exists and is not bundled into
   const html=await source('index.html');
   const version = html.match(/Тестовая версия ([\d.]+)/)[1];
   assert.ok(html.includes(`/downloads/nutriciolog-${version}.apk`));
-  const apk = await readFile(new URL(`downloads/nutriciolog-${version}.apk`, root));
-  assert.equal(apk.subarray(0, 2).toString(), 'PK');
-  assert.ok((await source('.github/workflows/deploy-yandex.yml')).includes('cp -r downloads deploy/'));
+  // The APK lives in the GitHub Release; CI downloads it into downloads/ before tests.
+  const apk = await readFile(new URL(`downloads/nutriciolog-${version}.apk`, root)).catch(() => null);
+  if (apk) assert.equal(apk.subarray(0, 2).toString(), 'PK');
+  const workflow = await source('.github/workflows/deploy-yandex.yml');
+  assert.ok(workflow.includes('gh release download "v$version"'));
+  assert.ok(workflow.indexOf('gh release download') < workflow.indexOf('npm run test:shared-client'));
   assert.ok(!(await source('scripts/build-android-web.mjs')).includes('"downloads"'));
 });
 

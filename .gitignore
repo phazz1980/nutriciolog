@@ -46,3 +46,6 @@ wear-auth/function.zip
 # Screenshots from local .nav-check.cjs / .plan-check.cjs runs
 nav-check.png
 plan-tab.png
+
+# APKs are published via GitHub Releases, not Git
+downloads/

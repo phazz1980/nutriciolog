@@ -26,6 +26,17 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      # APKs are not stored in Git: the build published in android-release.json
+      # is attached to the GitHub Release of its tag and verified by SHA-256.
+      - name: Fetch published APK from GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p 'require("./android-release.json").version')
+          mkdir -p downloads
+          gh release download "v$version" --pattern "nutriciolog-$version.apk" --dir downloads --clobber
+          echo "$(node -p 'require("./android-release.json").sha256')  downloads/nutriciolog-$version.apk" | sha256sum -c -
+
       - name: Validate shared client and Android compilation
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
@@ -55,13 +66,17 @@ jobs:
           cp service-worker.js deploy/
           cp manifest.webmanifest deploy/
           cp -r icons deploy/
-          cp -r downloads deploy/
 
       - name: Deploy to Yandex Object Storage
         run: |
           aws s3 sync deploy/ s3://nutriciolog-x20/ \
             --endpoint-url=https://storage.yandexcloud.net \
-            --delete --exclude "android-release.json"
+            --delete --exclude "android-release.json" --exclude "downloads/*"
+
+      - name: Publish APK
+        run: |
+          version=$(node -p 'require("./android-release.json").version')
+          aws s3 cp "downloads/nutriciolog-$version.apk" "s3://nutriciolog-x20/downloads/nutriciolog-$version.apk" --endpoint-url=https://storage.yandexcloud.net --content-type="application/vnd.android.package-archive"
 
       - name: Publish fresh Android update metadata
         run: |

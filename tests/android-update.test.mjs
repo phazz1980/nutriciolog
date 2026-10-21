@@ -90,12 +90,17 @@ test('published APK registry matches a real download and is deployed after APKs 
   assert.ok(Number.isSafeInteger(release.versionCode) && release.versionCode > 0);
   assert.ok(Number.isSafeInteger(release.minSdkVersion) && release.minSdkVersion >= 26);
   assert.equal(release.url, 'https://nutriciolog-x20.website.yandexcloud.net/downloads/nutriciolog-' + release.version + '.apk');
-  const bytes = await readFile(new URL('downloads/nutriciolog-' + release.version + '.apk', root));
-  assert.equal(createHash('sha256').update(bytes).digest('hex'), release.sha256);
+  assert.match(release.sha256, /^[0-9a-f]{64}$/);
+  // Locally the APK may be absent: it is fetched from the GitHub Release in CI.
+  const bytes = await readFile(new URL('downloads/nutriciolog-' + release.version + '.apk', root)).catch(() => null);
+  if (bytes) assert.equal(createHash('sha256').update(bytes).digest('hex'), release.sha256);
   assert.ok((await source('index.html')).includes(release.url));
   const workflow = await source('.github/workflows/deploy-yandex.yml');
   assert.ok(workflow.includes('--exclude "android-release.json"'));
   assert.ok(workflow.indexOf('aws s3 cp android-release.json') > workflow.indexOf('aws s3 sync deploy/'));
+  assert.ok(workflow.includes('sha256sum -c -'), 'Released APK is verified against android-release.json');
+  assert.ok(workflow.includes('--exclude "downloads/*"'), 'Older APKs stay published');
+  assert.ok(workflow.indexOf('aws s3 cp android-release.json') > workflow.indexOf('aws s3 cp "downloads/'), 'Metadata is published after the APK');
   assert.ok(workflow.includes('--cache-control="no-store"'));
   assert.ok(!(await source('service-worker.js')).includes('"./android-release.json"'));
   assert.ok(!(await source('scripts/build-android-web.mjs')).includes('"android-release.json"'));
