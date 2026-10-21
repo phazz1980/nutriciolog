@@ -799,7 +799,7 @@ export const serverTimestamp=()=>0;
     }
     assert.equal(await request(`${origin}/firebase-client.js`), cached);
     assert.equal(request(`${origin}/api/advice`), undefined);
-    assert.equal(await request('https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js'), cached);
+    assert.equal(await request('https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js'), cached);
     assert.equal(request(`${origin}/index.html`, 'POST'), undefined);
     fetchResult = async () => ({ ok: false });
     assert.equal(await request(`${origin}/index.html`), cached);

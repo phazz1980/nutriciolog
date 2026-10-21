@@ -478,19 +478,19 @@ async function loadProfile() {
 async function connectFirebase() {
   // Keep firebase-app at its canonical URL: Auth/Firestore import that same
   // module and must share its component registry. A failed app import needs reload.
-  const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js").catch(error => {
+  const { initializeApp } = await import("https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js").catch(error => {
     appModuleFailed = true;
     throw error;
   });
   // Browsers cache failed module loads. Retry Auth/Firestore entrypoints under a fresh URL.
   const retry = sdkAttempt++ ? `?retry=${sdkAttempt}` : "";
   const [authSdk, firestoreSdk] = await Promise.all([
-    import(`https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js${retry}`),
-    import(`https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js${retry}`),
+    import(`https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js${retry}`),
+    import(`https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js${retry}`),
   ]);
   // Lite uses ordinary HTTPS requests rather than Firestore's persistent
   // WebChannel. Keep it as a read fallback for restrictive mobile networks.
-  firestoreLiteSdk = await import(`https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-lite.js${retry}`).catch(() => null);
+  firestoreLiteSdk = await import(`https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore-lite.js${retry}`).catch(() => null);
   const app = initializeApp(firebaseConfig);
   // Android WebView behind a VPN or a filtered Wi-Fi network can drop
   // Firestore's streaming WebChannel. Long polling is slower but keeps the

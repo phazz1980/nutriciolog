@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md — текущее состояние проекта
 
-Последняя проверка: 2026-10-21
-Версия клиента в исходниках: `v0.4.16` (Android versionCode 31, PWA `shell-v88`)
+Последняя проверка: 2026-10-22
+Версия клиента в исходниках: `v0.4.17` (Android versionCode 32, PWA `shell-v89`)
 Версия AI-шлюза: `0.1.25` (Яндекс — версия `d4e0bc115h7hpfbepk63`, $latest; Cloudflare-резерв обновляется автоматически из `main`)
 Скачиваемый APK: `0.4.14` / code 29 (`android-release.json`)
 
@@ -15,6 +15,12 @@
 - Данные: Firebase Auth + Firestore (`firestore.rules`, доступ по UID), local-first очередь и гостевой режим.
 - AI: `worker/src/` — общий код шлюза; основной — Yandex Cloud Functions (`yandex/`, квота в YDB), резерв — Cloudflare Worker (`worker/src/cloudflare.js`). Провайдер Blackroute, ключ только в Lockbox / Worker secrets.
 - Wear OS: `wearos/` (приложение) и `wear-auth/` (сопряжение часов, отдельная функция Яндекса).
+
+## Изменено в v0.4.17
+
+- Браузерный Firebase SDK обновлён с 10.14.1 до 12.19.0, той же версии, что в эмуляторных тестах (`firebase-client.js`, `index.html`, `service-worker.js`). Используемые API (Auth, Firestore, `initializeFirestore`, email-ссылки, `linkWithCredential`) между версиями не менялись. Локально сайт с SDK 12 загружается, `nutritionStore` инициализируется.
+- `tests/service-worker.test.mjs` проверяет, что каждый модуль `js/` и каждый импорт с `?release=` есть в SHELL, а версия Firebase SDK совпадает с `package.json`.
+- README и ROADMAP сокращены до текущего состояния; прежние версии — в `docs/history/`.
 
 ## Изменено в v0.4.16
 
@@ -50,10 +56,14 @@ APK больше не хранятся в Git: `downloads/` в `.gitignore`. APK
 ## Известные проблемы
 
 - `js/app.js` (~2100 строк) и `firebase-client.js` (~1000 строк) снова стали монолитами.
-- Список кэша `service-worker.js` ведётся вручную; Firebase SDK в браузере 10.14.1, в тестах — 12.19.0.
-- `README.md` и `ROADMAP.md` очень большие и содержат историю; их стоит сократить так же, как этот файл.
-- На GitHub остались открытый PR от qwen-chat и старые ветки; `main` без защиты.
+- Список кэша `service-worker.js` по-прежнему ведётся вручную, но расхождения ловит тест.
+- На GitHub остались открытый PR #2 от qwen-chat и старые ветки (локальная копия — `refs/backup/*`); удаление требует подтверждения пользователя. `main` без защиты.
+- Встроенный браузер Claude не регистрирует Service Worker на `http://127.0.0.1` (и для старой версии); проверять PWA на рабочем сайте или через `tests/auth-network.cjs`.
 - Рабочая папка лежит в OneDrive: это уже приводило к рассинхрону файлов и `.git` между ПК.
+
+## Проверки v0.4.17
+
+- `node --test tests/*.test.mjs`: 119 passed, 1 skipped; `node tests/auth-network.cjs` (Edge): 37 PASS.
 
 ## Проверки v0.4.16
 

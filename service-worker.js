@@ -1,4 +1,4 @@
-const CACHE = "my-nutritionist-shell-v88";
+const CACHE = "my-nutritionist-shell-v89";
 const SHELL = [
   "./",
   "./index.html",
@@ -35,7 +35,7 @@ const SHELL = [
   "./js/native-appearance.js",
   "./js/pull-refresh.js",
 ];
-const FIREBASE_SDK = ["https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js", "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js", "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js"];
+const FIREBASE_SDK = ["https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js", "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js", "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js"];
 const SHELL_URLS = new Set([...SHELL.map(path => new URL(path, self.registration.scope).href), ...FIREBASE_SDK]);
 
 self.addEventListener("install", event => event.waitUntil(caches.open(CACHE).then(async cache => {
