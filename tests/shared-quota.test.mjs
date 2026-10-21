@@ -119,3 +119,19 @@ test('Worker staged configuration and public CORS/auth remain closed', async () 
   const preflight = await worker.fetch(new Request('https://example.test', { method: 'OPTIONS', headers: { Origin: 'https://localhost' } }), env);
   assert.equal(preflight.headers.get('Access-Control-Allow-Origin'), 'https://localhost');
 });
+
+
+test('exempt account continues above 1000 in both gateways with one counted history', async () => {
+  const {local,remote}=stores();
+  const now=new Date('2026-10-16T00:00:00Z');
+  for(let i=0;i<1000;i++)await local.consume('owner','2026-10',1000);
+  const claims={email:'340052@gmail.com'};
+  const results=await Promise.all(Array.from({length:8},(_,i)=>userQuota({AI_QUOTA_STORE:i%2?remote:local},'owner',true,now,claims)));
+  assert.ok(results.every(q=>q.unlimited===true && q.remaining>0));
+  assert.equal(await remote.read('owner','2026-10'),1008);
+  await assert.rejects(userQuota({AI_QUOTA_STORE:remote},'owner',true,now,{email:'another@example.com'}),QuotaExceededError);
+  const wrongEmail=await userQuota({AI_QUOTA_STORE:remote},'fresh',false,now,{email:'340052@gmail.com.other'});
+  assert.equal(wrongEmail.limit,1000);
+  assert.equal(wrongEmail.unlimited,undefined);
+  await assert.rejects(userQuota({},'owner',true,now,claims),QuotaUnavailableError);
+});

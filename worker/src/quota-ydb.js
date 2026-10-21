@@ -71,13 +71,13 @@ export function createYdbQuotaStore({ endpoint, table = "ai_monthly_usage", toke
       if (!data) throw new Error("Quota read failed");
       return data.Item ? count(data.Item) : 0;
     },
-    async consume(uid, period, limit) {
+    async consume(uid, period, limit, unlimited = false) {
       const data = await call("UpdateItem", {
         Key: key(uid, period),
         UpdateExpression: "SET #used = if_not_exists(#used, :zero) + :one",
         ConditionExpression: "attribute_not_exists(#used) OR #used < :limit",
         ExpressionAttributeNames: { "#used": "used" },
-        ExpressionAttributeValues: { ":zero": { N: "0" }, ":one": { N: "1" }, ":limit": { N: String(limit) } },
+        ExpressionAttributeValues: { ":zero": { N: "0" }, ":one": { N: "1" }, ":limit": { N: String(unlimited ? Number.MAX_SAFE_INTEGER : limit) } },
         ReturnValues: "ALL_NEW",
       });
       return data === null ? null : count(data.Attributes);

@@ -59,10 +59,13 @@ export function initAiQuota() {
       detail.textContent = "Лимит общий для всех ваших устройств.";
       quotaHelp.open = false;
     } else if (quota) {
-      status.textContent = `Осталось ${quota.remaining.toLocaleString("ru-RU")} из ${quota.limit.toLocaleString("ru-RU")} запросов`;
+      status.textContent = quota.unlimited === true ? "Без месячного лимита"
+        : `Осталось ${quota.remaining.toLocaleString("ru-RU")} из ${quota.limit.toLocaleString("ru-RU")} запросов`;
       if (error) status.textContent += `. ${error}`;
       const date = new Date(quota.resetsAt).toLocaleDateString("ru-RU", { timeZone: "UTC" });
-      detail.textContent = `Использовано: ${quota.used.toLocaleString("ru-RU")}. Обновление ${date} в 00:00 UTC. Текст, расчёт и фото — по 1 запросу; попытка учитывается и при ошибке ИИ.`;
+      detail.textContent = quota.unlimited === true
+        ? `Использовано за месяц: ${quota.used.toLocaleString("ru-RU")}. Учёт запросов и расходов сохраняется.`
+        : `Использовано: ${quota.used.toLocaleString("ru-RU")}. Обновление ${date} в 00:00 UTC. Текст, расчёт и фото — по 1 запросу; попытка учитывается и при ошибке ИИ.`;
     } else {
       status.textContent = loading ? "Загружаем остаток запросов…" : error || "Остаток пока неизвестен.";
       detail.textContent = "Лимит общий для всех ваших устройств.";

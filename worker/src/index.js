@@ -3,7 +3,7 @@ import { AiResponseFormatError } from "./providers/blackroute.js";
 import { userQuota, QuotaExceededError, QuotaUnavailableError } from "./quota.js";
 import { estimateUsage, readCosts } from './costs.js';
 
-const WORKER_VERSION = "0.1.23";
+const WORKER_VERSION = "0.1.24";
 
 const ALLOWED_ORIGINS = new Set([
   "https://nutriciolog.pages.dev",
@@ -54,7 +54,7 @@ export default {
       }
       if (!payload || typeof payload !== "object" || Array.isArray(payload)) return json({ error: "Тело запроса должно быть объектом." }, 400, request);
       if (payload.action === "usage") {
-        const usage = { quota: await userQuota(env, claims.sub) };
+        const usage = { quota: await userQuota(env, claims.sub, false, new Date(), claims) };
         // Authorization comes only from the verified Firebase token, never the request body.
         if (claims.email?.toLowerCase() === MODEL_SELECTOR_EMAIL) usage.costs = await readCosts(env, claims.sub);
         return json(usage, 200, request);
@@ -73,7 +73,7 @@ export default {
       if (image && !provider.supportsVision) {
         return json({ advice: "Этот ИИ пока не умеет анализировать фото. Опишите, пожалуйста, блюдо и примерную порцию текстом.", proposedMeal: null, proposedProducts: [] }, 200, request);
       }
-      quota = await userQuota(env, claims.sub, true);
+      quota = await userQuota(env, claims.sub, true, new Date(), claims);
       const costStore = env.AI_QUOTA_STORE;
       const costId = `cost:${new Date().toISOString().slice(0, 10)}:${crypto.randomUUID()}`;
       const tracking = Boolean(costStore?.startCost && costStore?.finishCost);

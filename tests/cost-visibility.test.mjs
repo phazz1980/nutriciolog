@@ -11,12 +11,13 @@ test('Cost panel is restricted and cleared when switching accounts; quota stays 
   const nodes = { aiQuotaStatus: element(), aiQuotaDetail: element(), aiQuotaHelp: element(), refreshAiQuotaButton: element() };
   assert.ok(readFileSync(new URL('../index.html', import.meta.url), 'utf8').includes('id="aiQuotaHelp"'));
   let auth = { signedIn: true }, email = 'other@example.com', render, panel;
+  let quota = { remaining: 900, limit: 1000, used: 100, resetsAt: '2027-01-01' };
   const context = vm.createContext({
     document: { getElementById: id => nodes[id], querySelectorAll: () => [],
       createElement: tag => { const node = element(); if (tag === 'div' && !panel) panel = node; return node; } },
     window: { addEventListener() {} }, getAuthStatus: () => auth,
     accountDefaults: () => ({ email }), onAiStateChange: callback => { render = callback; },
-    refreshQuota() {}, quotaState: () => ({ quota: { remaining: 900, limit: 1000, used: 100, resetsAt: '2027-01-01' } }),
+    refreshQuota() {}, quotaState: () => ({ quota }),
   });
   vm.runInContext(`${source}\ninitAiQuota();`, context);
   assert.equal(panel.hidden, true);
@@ -25,6 +26,10 @@ test('Cost panel is restricted and cleared when switching accounts; quota stays 
   email = '340052@gmail.com'; render();
   assert.equal(panel.hidden, false);
   assert.equal(panel.children[0].textContent, 'Расходы ИИ · оценка');
+  quota = { ...quota, unlimited: true, used: 1001 }; render();
+  assert.equal(nodes.aiQuotaStatus.textContent, 'Без месячного лимита');
+  assert.match(nodes.aiQuotaDetail.textContent, /1.?001/);
+  quota = { ...quota, unlimited: false };
   email = 'other@example.com'; render();
   assert.equal(panel.hidden, true);
   assert.equal(panel.children.length, 0);

@@ -42,11 +42,42 @@
       });
     })();
   </script>
+  <style>
+    #startupSplash{display:none}
+    html.app-starting body{overflow:hidden}
+    html.app-starting body>:not(#startupSplash){visibility:hidden}
+    html.app-starting #startupSplash{position:fixed;inset:0;z-index:10000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px;background:#f4f8f5;color:#18332b;font:16px/1.4 system-ui,sans-serif;text-align:center}
+    html.app-starting[data-theme="dark"] #startupSplash{background:#000;color:#e4f0e9}
+    #startupSplash img{width:112px;height:112px;object-fit:contain}
+    #startupSplash strong{font-size:22px}
+    #startupSplash p{margin:0;opacity:.7}
+  </style>
+  <script>
+    (() => {
+      const root = document.documentElement;
+      root.classList.add('app-starting');
+      let finished = false;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(fallback);
+        root.classList.remove('app-starting');
+        document.getElementById('startupSplash')?.remove();
+        window.removeEventListener('nutrition-ui-ready', ready);
+      };
+      // Two frames let the browser finish layout before revealing the cards.
+      const ready = () => requestAnimationFrame(() => requestAnimationFrame(finish));
+      const fallback = setTimeout(finish, 5000);
+      window.addEventListener('nutrition-ui-ready', ready, { once: true });
+    })();
+  </script>
   <link rel="manifest" href="./manifest.webmanifest"><link rel="icon" href="./icons/app-icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="./icons/app-icon.svg">
   <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js"><link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js"><link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js">
   <link rel="stylesheet" href="./styles.css">
 </head>
-<body><main class="phone">
+<body>
+<div id="startupSplash" role="status" aria-live="polite"><img src="./icons/nutritionist-logo.png" alt="" width="112" height="112"><strong>Мой нутрициолог</strong><p>Готовим ваш дневник…</p></div>
+<main class="phone">
 
   <div id="today" class="screen active"><header class="top"><div><p class="hello" id="greeting">Доброе утро</p><h1 id="todayTitle">Сегодня</h1></div><div class="top-side"><img class="brand-logo" src="./icons/nutritionist-logo.png" alt="Логотип «Мой нутрициолог»"></div></header><section class="card goal"><div><p>Дневная цель</p><b><span id="eaten">0</span> <small>из <span id="calorieGoal">0</span> ккал</small></b><p>Осталось <strong id="remain">0 ккал</strong></p></div><div class="ring" id="goalPercent">0%</div></section><div class="section-head"><h2>Баланс БЖУ</h2><button class="link" type="button" data-nav="profile">Цели — в профиле</button></div><section class="macro"><div><small>Белки</small><b id="proteinTotal">0 / 0 г</b><p class="bar" id="proteinBarRow"><i id="proteinBar" style="width:0%"></i></p></div><div><small>Жиры</small><b id="fatTotal">0 / 0 г</b><p class="bar orange" id="fatBarRow"><i id="fatBar" style="width:0%"></i></p></div><div><small>Углеводы</small><b id="carbsTotal">0 / 0 г</b><p class="bar" id="carbsBarRow"><i id="carbsBar" style="width:0%"></i></p></div></section><section class="card water"><h2 class="water-title">Вода</h2><div class="drops" id="drops" role="group" aria-label="Вода"><span class="drop" aria-hidden="true">💧</span><span class="drop" aria-hidden="true">💧</span><span class="drop" aria-hidden="true">💧</span><span class="drop" aria-hidden="true">💧</span><span class="drop" aria-hidden="true">💧</span><span class="drop" aria-hidden="true">💧</span><span class="drop" aria-hidden="true">💧</span><span class="drop" aria-hidden="true">💧</span></div><button class="secondary" type="button" id="addWaterButton" aria-label="Добавить стакан воды" title="Добавить стакан воды">+</button></section><button class="primary" type="button" id="todayAddMealButton">＋ Добавить приём пищи</button><section class="card daily-advice" id="dailyAdvice" hidden aria-live="polite"><div class="daily-advice-heading"><span class="daily-advice-icon" aria-hidden="true">✦</span><div><span class="daily-advice-label">По вашему меню</span><h2>Маленький шаг к балансу</h2></div></div><p id="dailyAdviceText"></p><div class="daily-advice-footer"><small>Совет ИИ · до 4 попыток в день на этом устройстве</small><button class="link" id="retryDailyAdvice" type="button" hidden>Повторить</button></div></section></div>
 

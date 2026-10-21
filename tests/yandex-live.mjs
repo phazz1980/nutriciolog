@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const site = 'https://nutriciolog-x20.website.yandexcloud.net';
-const client = await readFile(new URL('../js/ai-client.js', import.meta.url), 'utf8');
+const client = await readFile(new URL('../js/ai-transport.js', import.meta.url), 'utf8');
 const endpoint = client.match(/export const AI_ENDPOINT = "([^"]+)"/)[1];
 assert.equal(new URL(endpoint).hostname, 'functions.yandexcloud.net');
 async function request(url, options = {}) {
   return fetch(url, { ...options, signal: AbortSignal.timeout(20_000) });
 }
 
-const published = await request(`${site}/js/ai-client.js`);
+const published = await request(`${site}/js/ai-transport.js`);
 assert.equal(published.status, 200);
 assert.ok((await published.text()).includes(`AI_ENDPOINT = "${endpoint}"`), 'Published endpoint differs from local client');
 const health = await request(endpoint, { headers: { Origin: site } });

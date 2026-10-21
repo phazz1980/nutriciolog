@@ -17,7 +17,7 @@ export function createRemoteQuotaStore({ endpoint, secret, fetcher = fetch }) {
   }
   return {
     read: (uid, period) => call(uid, "read", { period }),
-    consume: (uid, period, limit) => call(uid, "consume", { period, limit }),
+    consume: (uid, period, limit, unlimited = false) => call(uid, "consume", { period, limit, unlimited }),
     startCost: (uid, id) => call(uid, "startCost", { id }),
     finishCost: (uid, id, nanoUsd, unknown) => call(uid, "finishCost", { id, nanoUsd, unknown }),
     readCosts: (uid, start, end) => call(uid, "readCosts", { start, end }),
@@ -40,12 +40,12 @@ export async function sharedQuotaRequest(request, env, store) {
   try {
     const body = await request.text();
     if (encoder.encode(body).length > 4096) return json({ error: "Request too large" }, 413);
-    const { uid, operation, period, limit, id, nanoUsd, unknown, start, end } = JSON.parse(body);
+    const { uid, operation, period, limit, unlimited = false, id, nanoUsd, unknown, start, end } = JSON.parse(body);
     if (typeof uid !== "string" || !uid || uid.length > 128) throw new Error();
     let result;
     switch (operation) {
       case "read": result = await store.read(uid, period); break;
-      case "consume": result = await store.consume(uid, period, limit); break;
+      case "consume": result = await store.consume(uid, period, limit, unlimited); break;
       case "startCost": result = await store.startCost(uid, id); break;
       case "finishCost": result = await store.finishCost(uid, id, nanoUsd, unknown); break;
       case "readCosts": result = await store.readCosts(uid, start, end); break;

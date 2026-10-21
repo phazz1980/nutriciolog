@@ -11,7 +11,7 @@ export function createCloudflareQuotaStore(namespace) {
   }
   return {
     read: (uid, period) => call(uid, "read", { period }),
-    consume: (uid, period, limit) => call(uid, "consume", { period, limit }),
+    consume: (uid, period, limit, unlimited = false) => call(uid, "consume", { period, limit, unlimited }),
     startCost: (uid, id) => call(uid, "startCost", { id }),
     finishCost: (uid, id, nanoUsd, unknown) => call(uid, "finishCost", { id, nanoUsd, unknown }),
     readCosts: (uid, start, end) => call(uid, "readCosts", { start, end }),
@@ -25,12 +25,12 @@ export class AiQuotaObject {
     if (request.method !== "POST") return new Response(null, { status: 405 });
     try {
       const input = await request.json();
-      const { operation, period, limit, id, nanoUsd, unknown, start, end } = input;
+      const { operation, period, limit, unlimited = false, id, nanoUsd, unknown, start, end } = input;
       const validCount = n => Number.isSafeInteger(n) && n >= 0;
       const validId = typeof id === "string" && /^cost:\d{4}-\d{2}-\d{2}:[a-f0-9-]{36}$/.test(id);
       const validPeriod = typeof period === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(period);
       if (["read", "consume"].includes(operation) && (!validPeriod ||
-          (operation === "consume" && (!validCount(limit) || limit < 1 || limit !== this.limit)))) throw new Error();
+          (operation === "consume" && (typeof unlimited !== "boolean" || !validCount(limit) || limit < 1 || limit !== this.limit)))) throw new Error();
       let result;
       if (operation === "read") {
         result = await this.storage.get(`quota:${period}`) ?? 0;
@@ -39,7 +39,8 @@ export class AiQuotaObject {
         result = await this.storage.transaction(async tx => {
           const used = await tx.get(`quota:${period}`) ?? 0;
           if (!validCount(used)) throw new Error();
-          if (used >= limit) return null;
+          if (!unlimited && used >= limit) return null;
+          if (!Number.isSafeInteger(used + 1)) throw new Error();
           await tx.put(`quota:${period}`, used + 1);
           return used + 1;
         });

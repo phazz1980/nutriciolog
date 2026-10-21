@@ -22,25 +22,31 @@ export function quotaPeriod(now = new Date()) {
   };
 }
 
-function snapshot(used, limit, month) {
+export function isQuotaExempt(claims) {
+  return typeof claims?.email === "string" && claims.email.toLowerCase() === "340052@gmail.com";
+}
+
+function snapshot(used, limit, month, unlimited = false) {
   if (!Number.isSafeInteger(used) || used < 0) throw new QuotaUnavailableError();
-  return { unit: "requests", limit, used, remaining: Math.max(0, limit - used), ...month };
+  if (unlimited) limit = Number.MAX_SAFE_INTEGER; // Older APKs also derive remaining from limit - used.
+  return { ...(unlimited ? { unlimited: true } : {}), unit: "requests", limit, used, remaining: Math.max(0, limit - used), ...month };
 }
 
 // Only a server-provided store is accepted. No in-memory/localStorage fallback.
-export async function userQuota(env, uid, consume = false, now = new Date()) {
+export async function userQuota(env, uid, consume = false, now = new Date(), claims = null) {
+  const unlimited = isQuotaExempt(claims);
   const limit = monthlyLimit(env);
   const month = quotaPeriod(now);
   const store = env.AI_QUOTA_STORE;
   if (!store?.read || !store?.consume) throw new QuotaUnavailableError();
   try {
-    if (!consume) return snapshot(await store.read(uid, month.period), limit, month);
-    const used = await store.consume(uid, month.period, limit);
+    if (!consume) return snapshot(await store.read(uid, month.period), limit, month, unlimited);
+    const used = await store.consume(uid, month.period, limit, unlimited);
     if (used === null) {
       const quota = snapshot(await store.read(uid, month.period), limit, month);
       throw new QuotaExceededError(quota);
     }
-    return snapshot(used, limit, month);
+    return snapshot(used, limit, month, unlimited);
   } catch (error) {
     if (error instanceof QuotaExceededError) throw error;
     // Never expose database responses, credentials or identifiers to the client.

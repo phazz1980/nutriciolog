@@ -1739,7 +1739,7 @@ function persist(method, value) {
 function initProfile() {
   const preview = cachedProfilePreview();
   if (preview?.profile) applyProfile(preview.profile, { uid: preview.uid });
-  loadCurrentProfile();
+  return loadCurrentProfile();
 }
 
 function initDiaryCalendar() {
@@ -2099,10 +2099,27 @@ function boot() {
   }, 10_000);
 
   // preview показывается сразу, синхронизация с Firebase идёт следом.
-  initProfile();
-  loadWater();
-  loadWeightProgress();
-  renderDiaryForDate(selectedDiaryDate);
+  const initialData = Promise.allSettled([
+    initProfile(), loadWater(), loadWeightProgress(), renderDiaryForDate(selectedDiaryDate),
+  ]);
+  // Restore the session before the final first render; never wait for AI advice.
+  const initialAuth = new Promise(resolve => {
+    const settled = () => {
+      if (getAuthStatus().state === "loading") return;
+      unsubscribe();
+      resolve();
+    };
+    const unsubscribe = onAuthStatus(settled);
+    settled();
+    // Also release this listener when the independent splash timeout expires.
+    window.setTimeout(() => { unsubscribe(); resolve(); }, 5000);
+  });
+  void Promise.allSettled([initialData, initialAuth]).then(async () => {
+    await Promise.allSettled([
+      loadCurrentProfile(), loadWater(), loadWeightProgress(), renderDiaryForDate(selectedDiaryDate),
+    ]);
+    window.dispatchEvent(new Event("nutrition-ui-ready"));
+  });
   renderWeightProgress();
   startDayWatchers();
 }

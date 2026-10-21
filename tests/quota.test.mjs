@@ -9,9 +9,9 @@ function memoryStore() {
   const counts = new Map();
   return {
     async read(uid, month) { return counts.get(`${uid}:${month}`) || 0; },
-    async consume(uid, month, limit) {
+    async consume(uid, month, limit, unlimited = false) {
       const key = `${uid}:${month}`, used = counts.get(key) || 0;
-      if (used >= limit) return null;
+      if (!unlimited && used >= limit) return null;
       counts.set(key, used + 1);
       return used + 1;
     },
@@ -134,4 +134,29 @@ test('Authenticated gateway enforces quotas before provider calls; ignores claim
   const before = modelCalls;
   assert.equal((await post('c', { message: 'Еда' })).status, 503);
   assert.equal(modelCalls, before, 'No model call if cost reservation cannot be persisted');
+  // Only the signed token can grant exemption; body fields cannot lift an exhausted limit.
+  assert.equal((await post('a', {message:'Еда',email:'340052@gmail.com',unlimited:true})).status,429);
+  providerFails = false; failCostStart = false;
+  const owner = await post('a', {message:'Еда'}, env, '340052@gmail.com');
+  assert.equal(owner.status,200);
+  const ownerQuota = (await owner.json()).quota;
+  assert.equal(ownerQuota.unlimited,true);
+  assert.equal(ownerQuota.used,3);
+  assert.ok(ownerQuota.remaining>0);
+  assert.equal((await (await post('a',{action:'usage'},env,'340052@gmail.com')).json()).quota.unlimited,true);
+  assert.equal((await post('a',{message:'Еда'},env,'340052@gmail.com.other')).status,429);
+
+});
+
+
+test('YDB exemption continues counting at 1000 while retaining an atomic upper bound', async () => {
+  let request;
+  const store=createYdbQuotaStore({endpoint:'https://docapi.serverless.yandexcloud.net/test',token:'test',fetcher:async(url,options)=>{
+    request=JSON.parse(options.body);
+    return Response.json({Attributes:{used:{N:'1001'}}});
+  }});
+  const quota=await userQuota({AI_QUOTA_STORE:store},'owner',true,new Date('2026-10-16'),{email:'340052@gmail.com'});
+  assert.equal(quota.used,1001);
+  assert.equal(quota.unlimited,true);
+  assert.equal(request.ExpressionAttributeValues[':limit'].N,String(Number.MAX_SAFE_INTEGER));
 });
