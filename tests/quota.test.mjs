@@ -82,10 +82,10 @@ test('Authenticated gateway enforces quotas before provider calls; ignores claim
     if (providerFails) return Response.json({ error: {} }, { status: 500 });
     return Response.json({ choices: [{ message: { content: JSON.stringify({ advice: 'OK', proposedMeal: null }) } }] });
   });
-  function token(uid, email) {
+  function token(uid, email, extra = {}) {
     const now = Math.floor(Date.now() / 1000);
     const encode = data => Buffer.from(JSON.stringify(data)).toString('base64url');
-    const unsigned = `${encode({ alg: 'RS256', kid: jwk.kid })}.${encode({ sub: uid, email, aud: 'my-nutritionist-67ce8', iss: 'https://securetoken.google.com/my-nutritionist-67ce8', exp: now + 3600, iat: now, auth_time: now })}`;
+    const unsigned = `${encode({ alg: 'RS256', kid: jwk.kid })}.${encode({ sub: uid, email, email_verified: true, ...extra, aud: 'my-nutritionist-67ce8', iss: 'https://securetoken.google.com/my-nutritionist-67ce8', exp: now + 3600, iat: now, auth_time: now })}`;
     return `${unsigned}.${sign('RSA-SHA256', Buffer.from(unsigned), privateKey).toString('base64url')}`;
   }
   const costRecords = [];
@@ -95,9 +95,9 @@ test('Authenticated gateway enforces quotas before provider calls; ignores claim
     async startCost(uid, id) { if (failCostStart) throw new Error('private'); costRecords.push({ uid, id, nanoUsd: 0, unknown: 1 }); },
     async finishCost(uid, id, nanoUsd, unknown) { Object.assign(costRecords.find(row => row.uid === uid && row.id === id), { nanoUsd, unknown }); },
     async readCosts(uid) { return costRecords.filter(row => row.uid === uid).map(row => ({ ...row, day: row.id.slice(5, 15) })); },
-  }, AI_MONTHLY_REQUEST_LIMIT: '2' };
-  const post = (uid, body, config = env, email) => worker.fetch(new Request('https://gateway/api/advice', {
-    method: 'POST', headers: { Authorization: `Bearer ${token(uid, email)}`, 'Content-Type': 'application/json', Origin: 'https://nutriciolog-x20.website.yandexcloud.net' }, body: JSON.stringify(body),
+  }, AI_MONTHLY_REQUEST_LIMIT: '2', AI_ADMIN_EMAILS: 'owner@example.com, second@example.com' };
+  const post = (uid, body, config = env, email, extra) => worker.fetch(new Request('https://gateway/api/advice', {
+    method: 'POST', headers: { Authorization: `Bearer ${token(uid, email, extra)}`, 'Content-Type': 'application/json', Origin: 'https://nutriciolog-x20.website.yandexcloud.net' }, body: JSON.stringify(body),
   }), config);
   assert.equal((await post('a', { message: '' })).status, 400);
   assert.equal((await (await post('a', { action: 'usage' })).json()).quota.used, 0);
@@ -122,12 +122,12 @@ test('Authenticated gateway enforces quotas before provider calls; ignores claim
   assert.equal(unauthenticated.status, 401);
   assert.equal(costRecords.length, 3);
   assert.ok(costRecords.every(row => row.unknown === 1));
-  for (const email of [undefined, 'other@example.com', '340052@gmail.com.other']) {
-    const usage = await (await post('b', { action: 'usage', uid: 'a', email: '340052@gmail.com' }, env, email)).json();
+  for (const email of [undefined, 'other@example.com', 'owner@example.com.other']) {
+    const usage = await (await post('b', { action: 'usage', uid: 'a', email: 'owner@example.com' }, env, email)).json();
     assert.equal(Object.hasOwn(usage, 'costs'), false, 'Non-admin cannot request costs by spoofing payload email');
     assert.equal(usage.quota.used, 1, 'Quota remains available');
   }
-  const costs = (await (await post('b', { action: 'usage', uid: 'a' }, env, '340052@gmail.com')).json()).costs;
+  const costs = (await (await post('b', { action: 'usage', uid: 'a' }, env, 'owner@example.com')).json()).costs;
   assert.equal(costs.totals.day.requests, 1, 'Only verified UID costs are returned');
   assert.equal(costs.totals.day.unknown, 1, 'Missing usage on provider failure remains unknown');
   failCostStart = true;
@@ -135,16 +135,25 @@ test('Authenticated gateway enforces quotas before provider calls; ignores claim
   assert.equal((await post('c', { message: 'Еда' })).status, 503);
   assert.equal(modelCalls, before, 'No model call if cost reservation cannot be persisted');
   // Only the signed token can grant exemption; body fields cannot lift an exhausted limit.
-  assert.equal((await post('a', {message:'Еда',email:'340052@gmail.com',unlimited:true})).status,429);
+  assert.equal((await post('a', {message:'Еда',email:'owner@example.com',unlimited:true})).status,429);
   providerFails = false; failCostStart = false;
-  const owner = await post('a', {message:'Еда'}, env, '340052@gmail.com');
+  const owner = await post('a', {message:'Еда'}, env, 'OWNER@example.com');
   assert.equal(owner.status,200);
   const ownerQuota = (await owner.json()).quota;
   assert.equal(ownerQuota.unlimited,true);
   assert.equal(ownerQuota.used,3);
   assert.ok(ownerQuota.remaining>0);
-  assert.equal((await (await post('a',{action:'usage'},env,'340052@gmail.com')).json()).quota.unlimited,true);
-  assert.equal((await post('a',{message:'Еда'},env,'340052@gmail.com.other')).status,429);
+  assert.equal((await (await post('a',{action:'usage'},env,'owner@example.com')).json()).quota.unlimited,true);
+  assert.equal((await post('a',{message:'Еда'},env,'owner@example.com.other')).status,429);
+  // An admin address without verification grants nothing and cannot spend quota.
+  const unverified = await post('d', {message:'Еда'}, env, 'owner@example.com', { email_verified: false });
+  assert.equal(unverified.status, 403);
+  assert.equal((await unverified.json()).code, 'email_unverified');
+  assert.equal((await post('d', {action:'usage'}, env, 'new@example.com', { email_verified: undefined })).status, 403);
+  // Watch sessions use custom tokens minted for an existing account.
+  assert.equal((await post('e', {action:'usage'}, env, undefined, { email_verified: undefined, firebase: { sign_in_provider: 'custom' } })).status, 200);
+  // Without server configuration nobody is exempt.
+  assert.equal((await post('a',{message:'Еда'},{ ...env, AI_ADMIN_EMAILS: undefined },'owner@example.com')).status,429);
 
 });
 
@@ -155,7 +164,7 @@ test('YDB exemption continues counting at 1000 while retaining an atomic upper b
     request=JSON.parse(options.body);
     return Response.json({Attributes:{used:{N:'1001'}}});
   }});
-  const quota=await userQuota({AI_QUOTA_STORE:store},'owner',true,new Date('2026-10-16'),{email:'340052@gmail.com'});
+  const quota=await userQuota({AI_QUOTA_STORE:store,AI_ADMIN_EMAILS:'owner@example.com'},'owner',true,new Date('2026-10-16'),{email:'owner@example.com',email_verified:true});
   assert.equal(quota.used,1001);
   assert.equal(quota.unlimited,true);
   assert.equal(request.ExpressionAttributeValues[':limit'].N,String(Number.MAX_SAFE_INTEGER));

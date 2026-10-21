@@ -3,36 +3,36 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
-test('Cost panel is restricted and cleared when switching accounts; quota stays visible', () => {
+test('Cost panel follows server-provided costs and clears when switching accounts; quota stays visible', () => {
   const source = readFileSync(new URL('../js/ai-quota.js', import.meta.url), 'utf8')
     .replace(/^import .*;\r?\n/gm, '').replace('export function', 'function');
   const element = () => ({ children: [], append(...items) { this.children.push(...items); },
     replaceChildren() { this.children = []; }, after() {} });
   const nodes = { aiQuotaStatus: element(), aiQuotaDetail: element(), aiQuotaHelp: element(), refreshAiQuotaButton: element() };
   assert.ok(readFileSync(new URL('../index.html', import.meta.url), 'utf8').includes('id="aiQuotaHelp"'));
-  let auth = { signedIn: true }, email = 'other@example.com', render, panel;
+  let auth = { signedIn: true }, costs = null, render, panel;
   let quota = { remaining: 900, limit: 1000, used: 100, resetsAt: '2027-01-01' };
   const context = vm.createContext({
     document: { getElementById: id => nodes[id], querySelectorAll: () => [],
       createElement: tag => { const node = element(); if (tag === 'div' && !panel) panel = node; return node; } },
     window: { addEventListener() {} }, getAuthStatus: () => auth,
-    accountDefaults: () => ({ email }), onAiStateChange: callback => { render = callback; },
-    refreshQuota() {}, quotaState: () => ({ quota }),
+    onAiStateChange: callback => { render = callback; },
+    refreshQuota() {}, quotaState: () => ({ quota, costs }),
   });
   vm.runInContext(`${source}\ninitAiQuota();`, context);
   assert.equal(panel.hidden, true);
   assert.equal(panel.children.length, 0);
   assert.match(nodes.aiQuotaStatus.textContent, /Осталось/);
-  email = '340052@gmail.com'; render();
+  costs = { status: 'pending' }; render();
   assert.equal(panel.hidden, false);
   assert.equal(panel.children[0].textContent, 'Расходы ИИ · оценка');
   quota = { ...quota, unlimited: true, used: 1001 }; render();
   assert.equal(nodes.aiQuotaStatus.textContent, 'Без месячного лимита');
   assert.match(nodes.aiQuotaDetail.textContent, /1.?001/);
   quota = { ...quota, unlimited: false };
-  email = 'other@example.com'; render();
+  costs = null; render();
   assert.equal(panel.hidden, true);
   assert.equal(panel.children.length, 0);
-  auth = { signedIn: false }; email = '340052@gmail.com'; render();
+  auth = { signedIn: false }; costs = { status: 'pending' }; render();
   assert.equal(panel.hidden, true);
 });

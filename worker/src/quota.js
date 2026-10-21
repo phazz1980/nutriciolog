@@ -22,8 +22,16 @@ export function quotaPeriod(now = new Date()) {
   };
 }
 
-export function isQuotaExempt(claims) {
-  return typeof claims?.email === "string" && claims.email.toLowerCase() === "340052@gmail.com";
+// Owner accounts come from server configuration (AI_ADMIN_EMAILS, comma-separated),
+// never from source code or the request body. Only a verified email qualifies.
+export function isAdmin(env, claims) {
+  if (claims?.email_verified !== true || typeof claims.email !== "string") return false;
+  const admins = String(env?.AI_ADMIN_EMAILS || "").split(/[\s,]+/).map(email => email.trim().toLowerCase()).filter(Boolean);
+  return admins.includes(claims.email.toLowerCase());
+}
+
+export function isQuotaExempt(env, claims) {
+  return isAdmin(env, claims);
 }
 
 function snapshot(used, limit, month, unlimited = false) {
@@ -34,7 +42,7 @@ function snapshot(used, limit, month, unlimited = false) {
 
 // Only a server-provided store is accepted. No in-memory/localStorage fallback.
 export async function userQuota(env, uid, consume = false, now = new Date(), claims = null) {
-  const unlimited = isQuotaExempt(claims);
+  const unlimited = isQuotaExempt(env, claims);
   const limit = monthlyLimit(env);
   const month = quotaPeriod(now);
   const store = env.AI_QUOTA_STORE;

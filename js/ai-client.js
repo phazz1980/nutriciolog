@@ -53,10 +53,11 @@ export async function refreshQuota() {
       }, { timeoutMs: 15_000, isCurrent: () => generation === quotaGeneration });
       const data = await response.json();
       if (generation !== quotaGeneration) return;
+      if (data?.code === "email_unverified") throw new Error(data.error);
       if (!response.ok || !acceptQuota(data.quota, generation)) throw new Error();
       costs = data.costs || null;
-    } catch {
-      if (generation === quotaGeneration) { costs = null; quotaError = "Не удалось обновить остаток. Повторите попытку."; }
+    } catch (error) {
+      if (generation === quotaGeneration) { costs = null; quotaError = error?.message || "Не удалось обновить остаток. Повторите попытку."; }
     } finally {
       if (generation === quotaGeneration) { quotaLoad = null; notify(); }
     }
@@ -140,8 +141,10 @@ export async function requestAiAdvice(options) {
     });
     if (generation !== quotaGeneration) throw new DOMException("Account changed", "AbortError");
     logResponse(response);
-    try { acceptQuota((await response.clone().json()).quota, generation); } catch { /* Response errors are handled by the caller. */ }
+    let data = null;
+    try { data = await response.clone().json(); acceptQuota(data.quota, generation); } catch { /* Response errors are handled by the caller. */ }
     if (response.ok) serviceError = "";
+    else if (data?.code === "email_unverified") serviceError = "Подтвердите email по ссылке из письма, чтобы пользоваться ИИ.";
     else if (response.status === 401 || response.status === 403) serviceError = "Не удалось подтвердить доступ к ИИ. Повторите вход в профиле.";
     else if (response.status === 429 || response.status >= 500) serviceError = "ИИ временно недоступен. Можно повторить запрос позже.";
     return response;

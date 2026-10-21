@@ -1,4 +1,4 @@
-const CACHE = "my-nutritionist-shell-v87";
+const CACHE = "my-nutritionist-shell-v88";
 const SHELL = [
   "./",
   "./index.html",

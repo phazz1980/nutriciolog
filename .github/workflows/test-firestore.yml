@@ -1,6 +1,8 @@
 name: Test Firestore rules
 on:
   push:
+    # Branches only: release tags point at already-tested commits.
+    branches: ["**"]
     paths:
       - firestore.rules
       - firebase.test.json

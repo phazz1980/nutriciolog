@@ -1,9 +1,9 @@
 import { getProvider } from "./providers/index.js";
 import { AiResponseFormatError } from "./providers/blackroute.js";
-import { userQuota, QuotaExceededError, QuotaUnavailableError } from "./quota.js";
+import { userQuota, isAdmin, QuotaExceededError, QuotaUnavailableError } from "./quota.js";
 import { estimateUsage, readCosts } from './costs.js';
 
-const WORKER_VERSION = "0.1.24";
+const WORKER_VERSION = "0.1.25";
 
 const ALLOWED_ORIGINS = new Set([
   "https://nutriciolog.pages.dev",
@@ -24,7 +24,6 @@ function corsHeaders(request) {
   };
 }
 
-const MODEL_SELECTOR_EMAIL = "340052@gmail.com";
 const MAX_MESSAGE_LENGTH = 1000;
 const MAX_IMAGE_DATA_URL_LENGTH = 5_600_000;
 
@@ -46,6 +45,9 @@ export default {
     let quota;
     try {
       const claims = await verifyFirebaseToken(request.headers.get("Authorization"));
+      // Unverified email/password accounts are free to create, so they must not spend AI quota.
+      // Custom tokens are minted only by the watch pairing service for an existing account.
+      if (claims.email_verified !== true && claims.firebase?.sign_in_provider !== "custom") throw new EmailUnverifiedError();
       let payload;
       try {
         payload = await request.json();
@@ -56,7 +58,7 @@ export default {
       if (payload.action === "usage") {
         const usage = { quota: await userQuota(env, claims.sub, false, new Date(), claims) };
         // Authorization comes only from the verified Firebase token, never the request body.
-        if (claims.email?.toLowerCase() === MODEL_SELECTOR_EMAIL) usage.costs = await readCosts(env, claims.sub);
+        if (isAdmin(env, claims)) usage.costs = await readCosts(env, claims.sub);
         return json(usage, 200, request);
       }
       if (payload.action !== undefined) return json({ error: "Неизвестное действие." }, 400, request);
@@ -68,7 +70,7 @@ export default {
       if (image && (!/^image\/(jpeg|png|webp)$/.test(image.mimeType || "") || typeof image.dataUrl !== "string" || image.dataUrl.length > MAX_IMAGE_DATA_URL_LENGTH)) {
         return json({ error: "Недопустимое фото. Используйте JPEG, PNG или WebP до 4 МБ." }, 400, request);
       }
-      const requestedModel = claims.email?.toLowerCase() === MODEL_SELECTOR_EMAIL ? model : null;
+      const requestedModel = isAdmin(env, claims) ? model : null;
       const provider = getProvider(env, requestedModel, image);
       if (image && !provider.supportsVision) {
         return json({ advice: "Этот ИИ пока не умеет анализировать фото. Опишите, пожалуйста, блюдо и примерную порцию текстом.", proposedMeal: null, proposedProducts: [] }, 200, request);
@@ -108,6 +110,7 @@ function errorResponse(error, request) {
   if (error instanceof QuotaExceededError) return json({ error: error.message, code: "quota_exceeded", quota: error.quota }, 429, request);
   if (error instanceof QuotaUnavailableError) return json({ error: error.message, code: "quota_unavailable" }, 503, request);
   if (error?.name === "TimeoutError" || error?.name === "AbortError") return json({ error: "ИИ не ответил вовремя. Повторите запрос позже." }, 504, request);
+  if (error instanceof EmailUnverifiedError) return json({ error: error.message, code: "email_unverified" }, 403, request);
   if (error instanceof AccessError) return json({ error: error.message }, 401, request);
   if (!(error instanceof Error)) return json({ error: "Некорректный запрос." }, 400, request);
   if (error.message === "Blackroute provider is missing its Worker secret") {
@@ -147,6 +150,9 @@ const textEncoder = new TextEncoder();
 let firebaseJwks = { expiresAt: 0, keys: {} };
 
 class AccessError extends Error {}
+class EmailUnverifiedError extends Error {
+  constructor() { super("Подтвердите email по ссылке из письма, чтобы пользоваться ИИ."); }
+}
 
 async function verifyFirebaseToken(authorization) {
   if (!authorization?.startsWith("Bearer ")) throw new AccessError("Войдите в аккаунт, чтобы воспользоваться ИИ.");

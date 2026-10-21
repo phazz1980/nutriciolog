@@ -761,7 +761,8 @@ export const serverTimestamp=()=>0;
         const resetsAt=new Date(Date.UTC(new Date().getUTCFullYear(),new Date().getUTCMonth()+1,1)).toISOString();
         await route.fulfill({json:{quota:{unit:'requests',used:2,limit:1000,remaining:998,period,resetsAt},costs:{status:'ok',currency:'USD',totals:{day:{nanoUsd:422020,requests:1,unknown:0},week:{nanoUsd:21190770,requests:2,unknown:1},month:{nanoUsd:21190770,requests:2,unknown:1}}}}});
       });
-      const costOwnerEmail=fs.readFileSync(path.join(root,'js/ai-quota.js'),'utf8').match(/email\?\.toLowerCase\(\) === "([^"]+)"/)[1];
+      // The gateway decides who receives costs (AI_ADMIN_EMAILS); the client only renders them.
+      const costOwnerEmail='owner@example.com';
       await page.evaluate(email=>window.test.setUser({uid:'cost-user',email,getIdToken:async()=> 'test-token'}),costOwnerEmail);
       await page.locator('[data-nav="profile"]').first().click();
       await page.waitForFunction(()=>document.getElementById('aiCosts').textContent.includes('$0.000422'));

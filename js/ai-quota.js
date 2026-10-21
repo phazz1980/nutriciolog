@@ -1,5 +1,5 @@
 import { quotaState, refreshQuota, onAiStateChange } from "./ai-client.js";
-import { accountDefaults, getAuthStatus } from "./storage.js";
+import { getAuthStatus } from "./storage.js";
 
 export function initAiQuota() {
   const status = document.getElementById("aiQuotaStatus");
@@ -15,7 +15,8 @@ export function initAiQuota() {
     const { quota, costs, error, loading } = quotaState();
     const costHelpOpen = Boolean(costPanel.querySelector?.('details')?.open);
     costPanel.replaceChildren();
-    const showCosts = Boolean(auth?.signedIn && accountDefaults().email?.toLowerCase() === "340052@gmail.com");
+    // The gateway returns costs only to accounts listed in its AI_ADMIN_EMAILS.
+    const showCosts = Boolean(auth?.signedIn && costs);
     costPanel.hidden = !showCosts;
     if (showCosts) {
       const heading = document.createElement('h3');
