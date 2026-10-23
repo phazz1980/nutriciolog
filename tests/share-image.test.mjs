@@ -75,8 +75,7 @@ test('Android share target is registered; app automatically recognizes the recei
   const main = readFileSync(new URL('android/app/src/main/java/ru/phazz/nutriciolog/MainActivity.java', root), 'utf8');
   assert.match(main, /registerPlugin\(ShareImagePlugin.class\)/);
   const app = readFileSync(new URL('js/app.js', root), 'utf8');
-  const binding = app.slice(app.indexOf('void initShareImage('), app.indexOf('void initShareImage(') + 320);
-  assert.match(binding, /showScreen\("assistant"\)/);
-  assert.match(binding, /await selectPhoto\(file\)/);
-  assert.match(binding, /await requestAdvice\(\)/);
+  const binding = app.slice(app.indexOf('void initShareImage('), app.indexOf('void initShareImage(') + 200);
+  // A shared image is recognized as a meal (like the 📷 button), not sent as an advice question.
+  assert.match(binding, /onImage: recognizeSharedImage/);
 });

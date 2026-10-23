@@ -9,7 +9,7 @@ function setup(ask = async () => ({ status: 'ok', data: { advice: 'Ответ' }
   const fields = Object.fromEntries(['question', 'photoPreview', 'mealPhoto', 'aiDebug'].map(id => [id, node()]));
   const send = node(), requests = [], bubbles = [], transfers = [];
   const context = vm.createContext({
-    selectedPhoto: null, photoSelectionVersion: 0, photoPreparing: false, adviceSending: false, sharedAdvicePending: false,
+    selectedPhoto: null, photoSelectionVersion: 0, photoPreparing: false, adviceSending: false,
     MAX_PHOTO_BYTES: 4 * 1024 * 1024,
     element: id => fields[id], document: { querySelector: () => send, createElement: node },
     availability: () => ({ busy: false }),
@@ -89,32 +89,31 @@ test('cancel keeps attachment; removing during preparation prevents a late previ
 });
 
 
-test('shared image recognizes immediately and keeps the result in advice', async () => {
-  const { context, transfers, requests, bubbles } = setup();
-  await context.selectPhoto({ name: 'screenshot.png', size: 100 });
-  context.sharedAdvicePending = true;
-  await context.requestAdvice();
-  assert.equal(requests.length, 1);
-  assert.equal(transfers.length, 0);
-  assert.equal(bubbles.at(-1)[1], 'Ответ');
-  assert.equal(context.sharedAdvicePending, false);
+test('shared image waits for the restored session, then opens meal recognition in order', async () => {
+  const calls = [];
+  let state = 'loading', notifyAuth;
+  const context = vm.createContext({
+    sharedImageQueue: Promise.resolve(), setTimeout, clearTimeout,
+    getAuthStatus: () => ({ state }),
+    onAuthStatus: handler => { notifyAuth = handler; return () => { notifyAuth = null; }; },
+    showScreen: screen => calls.push(`screen:${screen}`),
+    recognizeMealPhoto: async file => { calls.push(`recognize:${file.name}`); await new Promise(resolve => setImmediate(resolve)); calls.push(`done:${file.name}`); },
+  });
+  vm.runInContext(app.slice(app.indexOf('function waitForAuthReady('), app.indexOf('async function recognizeMealPhoto(')), context);
+  const first = context.recognizeSharedImage({ name: 'first.png' });
+  const second = context.recognizeSharedImage({ name: 'second.png' });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(calls, ['screen:today'], 'No request while the session is still loading');
+  state = 'ready'; notifyAuth();
+  await first; await second;
+  assert.deepEqual(calls, ['screen:today', 'recognize:first.png', 'done:first.png', 'screen:today', 'recognize:second.png', 'done:second.png']);
+  assert.equal(notifyAuth, null, 'Auth listener is removed');
 });
 
-test('shared image received during a request is recognized after the current reply', async () => {
-  let finish;
-  const { context, requests } = setup(() => new Promise(resolve => { finish = resolve; }));
-  await context.selectPhoto({ name: 'first.png', size: 100 });
-  const pending = context.requestAdvice();
-  await context.selectPhoto({ name: 'shared.png', size: 100 });
-  context.sharedAdvicePending = true;
-  await context.requestAdvice();
-  assert.equal(requests.length, 1);
-  finish({ status: 'ok', data: { advice: 'Первый ответ' } });
-  await pending;
-  assert.equal(requests.length, 2);
-  assert.equal(requests[1].image.dataUrl, 'shared.png');
-  finish({ status: 'ok', data: { advice: 'Второй ответ' } });
-  await new Promise(resolve => setImmediate(resolve));
-  assert.equal(context.adviceSending, false);
-  assert.equal(context.selectedPhoto, null);
+test('shared image is never sent as an advice question', () => {
+  const advice = app.slice(app.indexOf('async function requestAdvice('), app.indexOf('/* ------------------------------------------------------------- AI: voice */'));
+  assert.doesNotMatch(advice, /shared/i);
+  const recognize = app.slice(app.indexOf('function recognizeSharedImage('), app.indexOf('async function recognizeMealPhoto('));
+  assert.match(recognize, /await waitForAuthReady\(\)/);
+  assert.match(recognize, /await recognizeMealPhoto\(file\)/);
 });

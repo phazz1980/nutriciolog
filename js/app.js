@@ -43,7 +43,7 @@ let selectedPhoto = null;
 let photoSelectionVersion = 0;
 let photoPreparing = false;
 let adviceSending = false;
-let sharedAdvicePending = false;
+let sharedImageQueue = Promise.resolve();
 let editingPlan = null;
 let lastSelectedMealType = "";
 let lastCalculatedUnitWeight = null;
@@ -1269,6 +1269,28 @@ async function calculateMealNutrition(clarification = "") {
 
 /* ------------------------------------------------------------- AI: photo */
 
+// On a cold start from «Поделиться» the Firebase session is still being
+// restored; asking for a token then would wrongly show the sign-in dialog.
+function waitForAuthReady(timeoutMs = 15_000) {
+  if (getAuthStatus().state !== "loading") return Promise.resolve();
+  return new Promise(resolve => {
+    const done = () => { clearTimeout(timer); stop(); resolve(); };
+    const stop = onAuthStatus(() => { if (getAuthStatus().state !== "loading") done(); });
+    const timer = setTimeout(done, timeoutMs);
+  });
+}
+
+// A shared image goes through the same recognition as the 📷 button in the
+// meal form: result dialog → «Перенести в форму» → the user saves the meal.
+function recognizeSharedImage(file) {
+  sharedImageQueue = sharedImageQueue.then(async () => {
+    showScreen("today");
+    await waitForAuthReady();
+    await recognizeMealPhoto(file);
+  }).catch(() => {});
+  return sharedImageQueue;
+}
+
 async function recognizeMealPhoto(file) {
   if (!file) return;
   if (file.size > MAX_PHOTO_BYTES) {
@@ -1501,8 +1523,6 @@ async function requestAdvice(event) {
   const photoVersion = photoSelectionVersion;
   const hadPhoto = Boolean(photo);
   const message = text || "Определи блюдо на фото и оцени калории, белки, жиры и углеводы.";
-  const fromShare = sharedAdvicePending;
-  sharedAdvicePending = false;
   adviceSending = true;
   updateAdviceSubmitState();
   removeAiDiagnostic("aiResponseDiagnostic");
@@ -1530,17 +1550,10 @@ async function requestAdvice(event) {
     setAiDebug("Worker ответил успешно");
     appendBubble("bubble", result.data.advice);
     setText("chatStatus", "Ответ носит справочный характер.");
-    if (!sharedAdvicePending) {
-      if (fromShare) {
-        const products = result.data.proposedProducts?.length
-          ? result.data.proposedProducts
-          : result.data.proposedMeal ? [result.data.proposedMeal] : [];
-        await showProductProposals(products);
-      } else if (hadPhoto) openPhotoMealInAddForm(result.data);
-      else {
-        if (result.data.proposedProducts) await showProductProposals(result.data.proposedProducts);
-        if (result.data.proposedMeal) showMealProposal(result.data.proposedMeal);
-      }
+    if (hadPhoto) openPhotoMealInAddForm(result.data);
+    else {
+      if (result.data.proposedProducts) await showProductProposals(result.data.proposedProducts);
+      if (result.data.proposedMeal) showMealProposal(result.data.proposedMeal);
     }
     if (selectedPhoto === photo && photoSelectionVersion === photoVersion) removePhoto();
     speak(result.data.advice);
@@ -1550,7 +1563,6 @@ async function requestAdvice(event) {
   } finally {
     adviceSending = false;
     updateAdviceSubmitState();
-    if (sharedAdvicePending) void requestAdvice();
   }
 }
 
@@ -1716,7 +1728,6 @@ async function selectPhoto(file) {
 }
 
 function removePhoto() {
-  sharedAdvicePending = false;
   ++photoSelectionVersion;
   photoPreparing = false;
   selectedPhoto = null;
@@ -2007,13 +2018,7 @@ function boot() {
   initMealForm();
   initPhotoInputs();
   void initShareImage({
-    onImage: async file => {
-      showScreen("assistant");
-      if (await selectPhoto(file)) {
-        sharedAdvicePending = true;
-        await requestAdvice();
-      }
-    },
+    onImage: recognizeSharedImage,
     onError: message => toast(message),
   });
   initPlan();
