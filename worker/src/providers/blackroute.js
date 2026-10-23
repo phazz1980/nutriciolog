@@ -18,7 +18,7 @@ function recoverAdvice(value) {
   return (closed ? closed[1] : start[1]).replace(/\\n/g, "\n").replace(/\\"/g, '"').trim();
 }
 
-export function createBlackrouteProvider(apiKey, model = "deepseek-v3.2-maas") {
+export function createBlackrouteProvider(apiKey, model = "gemini-2.5-flash-lite") {
   if (!apiKey) throw new Error("Blackroute provider is missing its Worker secret");
   const supportsVision = new Set(["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.6-flash"]).has(model);
   const parseResult = (rawPayload, image) => {

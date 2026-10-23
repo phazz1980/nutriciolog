@@ -4,7 +4,7 @@ compatibility_date = "2026-09-15"
 
 [vars]
 AI_PROVIDER = "blackroute"
-BLACKROUTE_MODEL = "deepseek-v3.2-maas"
+BLACKROUTE_MODEL = "gemini-2.5-flash-lite"
 BLACKROUTE_VISION_MODEL = "gemini-2.5-flash"
 AI_MONTHLY_REQUEST_LIMIT = "1000"
 # Enable only after BOTH gateways are configured to use the shared counter.

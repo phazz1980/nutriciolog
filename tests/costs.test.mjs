@@ -35,10 +35,10 @@ test('Blackroute reports usage for both format attempts and for network errors',
     return Response.json({ usage: { prompt_tokens: 10, completion_tokens: 20 }, choices: [{ message: { content: calls === 1 ? 'invalid' : '{"advice":"OK"}' } }] });
   });
   const usages = [];
-  const result = await createBlackrouteProvider('test-only').advise('test', null, undefined, (model, usage) => usages.push(estimateUsage(model, usage)));
+  const result = await createBlackrouteProvider('test-only', 'deepseek-v3.2-maas').advise('test', null, undefined, (model, usage) => usages.push(estimateUsage(model, usage)));
   assert.equal(result.advice, 'OK'); assert.deepEqual(usages, [24700, 24700]);
   t.mock.method(globalThis, 'fetch', async () => { throw new Error('network'); });
-  await assert.rejects(createBlackrouteProvider('test-only').advise('test', null, undefined, (model, usage) => usages.push(estimateUsage(model, usage))));
+  await assert.rejects(createBlackrouteProvider('test-only', 'deepseek-v3.2-maas').advise('test', null, undefined, (model, usage) => usages.push(estimateUsage(model, usage))));
   assert.equal(usages.at(-1), null);
 });
 

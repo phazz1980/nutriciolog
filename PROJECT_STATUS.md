@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md — текущее состояние проекта
 
-Последняя проверка: 2026-10-22
-Версия клиента в исходниках: `v0.4.17` (Android versionCode 32, PWA `shell-v89`)
+Последняя проверка: 2026-10-24
+Версия клиента в исходниках: `v0.4.18` (Android versionCode 33, PWA `shell-v90`)
 Версия AI-шлюза: `0.1.25` (Яндекс — версия `d4e0bc115h7hpfbepk63`, $latest; Cloudflare-резерв обновляется автоматически из `main`)
 Скачиваемый APK: `0.4.14` / code 29 (`android-release.json`)
 
@@ -15,6 +15,14 @@
 - Данные: Firebase Auth + Firestore (`firestore.rules`, доступ по UID), local-first очередь и гостевой режим.
 - AI: `worker/src/` — общий код шлюза; основной — Yandex Cloud Functions (`yandex/`, квота в YDB), резерв — Cloudflare Worker (`worker/src/cloudflare.js`). Провайдер Blackroute, ключ только в Lockbox / Worker secrets.
 - Wear OS: `wearos/` (приложение) и `wear-auth/` (сопряжение часов, отдельная функция Яндекса).
+
+## Сбой ИИ 2026-10-24 и v0.4.18
+
+- Причина: Blackroute отвечает 404 на модели `*-maas`. Текстовая модель `deepseek-v3.2-maas` и `qwen3-…-maas` недоступны, хотя остаются в `/v1/models`. Шлюз возвращал `502` «Выбранная модель недоступна в Blackroute». Gemini-модели работают.
+- Исправление в Яндексе 2026-10-24: у функции `nutrition` переменная `BLACKROUTE_MODEL=gemini-2.5-flash-lite` (новая версия с тем же кодом 0.1.25, выбор пользователя). Health показывает `textModel: gemini-2.5-flash-lite`, текстовый запрос владельца — 200.
+- В коде (шлюз 0.1.26) модель по умолчанию и `wrangler.toml` переведены на `gemini-2.5-flash-lite`. Код 0.1.26 в Яндекс пока не загружался: там работает 0.1.25 с той же моделью через переменную.
+- Тарифа `gemini-2.5-flash-lite` нет в `worker/src/costs.js`, поэтому расходы текстовых запросов показываются как неизвестные (`*`), пока пользователь не задаст цену.
+- Одновременно в Yandex Cloud шёл сбой зон (YDB, Cloud Functions с ограничениями; Cloud Logging и Monitoring недоступны), поэтому логи функции посмотреть нельзя. К отказу ИИ он не относился: квота в YDB отвечала.
 
 ## Изменено в v0.4.17
 

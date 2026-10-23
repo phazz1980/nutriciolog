@@ -22,7 +22,7 @@
    таймаут 60 секунд, точка входа `index.handler`; загрузить `function.zip`.
 3. Указать переменные окружения:
    - `AI_PROVIDER=blackroute`
-   - `BLACKROUTE_MODEL=deepseek-v3.2-maas`
+   - `BLACKROUTE_MODEL=gemini-2.5-flash-lite` (с 24.10.2026: Blackroute отвечает 404 на модели `*-maas`)
    - `BLACKROUTE_VISION_MODEL=gemini-2.5-flash`
 4. Секрет `BLACKROUTE_API_KEY` подключить из Yandex Lockbox в одноимённую
    переменную. Выдать сервисному аккаунту функции доступ только к нужному секрету
